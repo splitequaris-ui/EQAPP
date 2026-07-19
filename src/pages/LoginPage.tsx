@@ -64,6 +64,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ mode }) => {
     if (!email.trim()) return setAuthError("Email is required.");
     if (!password.trim()) return setAuthError("Password is required.");
     if (mode === "signup" && !username.trim()) return setAuthError("Your name is required to create an account.");
+    
+    if (mode === "signup") {
+      if (password.length < 8) {
+        return setAuthError("Password must be at least 8 characters long.");
+      }
+      if (!/[A-Z]/.test(password)) {
+        return setAuthError("Password must contain at least one uppercase letter.");
+      }
+      if (!/[a-z]/.test(password)) {
+        return setAuthError("Password must contain at least one lowercase letter.");
+      }
+      if (!/[0-9]/.test(password)) {
+        return setAuthError("Password must contain at least one number.");
+      }
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        return setAuthError("Password must contain at least one special character.");
+      }
+    }
+
     setAuthLoading(true);
     setAuthError(null);
     try {
@@ -173,6 +192,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ mode }) => {
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
               className="py-5 px-4 rounded-xl"
             />
+            {mode === "signup" && (
+              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                Must be at least 8 characters with an uppercase letter, a lowercase letter, a number, and a symbol (required for 2FA).
+              </p>
+            )}
           </div>
 
           {authError && (

@@ -60,7 +60,11 @@ export const GroupDetail: React.FC = () => {
     activeGroupSettlements, 
     activeGroupActivities, 
     navigate,
-    refetchActiveGroupData
+    refetchActiveGroupData,
+    loadMoreExpenses,
+    loadMoreActivities,
+    hasMoreExpenses,
+    hasMoreActivities
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "suggest" | "timeline" | "roommate" | "budget">("expenses");
@@ -205,9 +209,15 @@ export const GroupDetail: React.FC = () => {
     if (!activeGroup || expensesOnly.length === 0) return;
     setLoadingInsights(true);
     try {
+      const token = await user?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/insights", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           expenses: expensesOnly.map(e => ({ title: e.title, amount: e.amount, category: e.category })),
           budget: activeGroup.budget || 0,
@@ -891,6 +901,17 @@ export const GroupDetail: React.FC = () => {
                 );
               })}
 
+              {hasMoreExpenses && (
+                <div className="flex justify-center mt-2">
+                  <button
+                    onClick={loadMoreExpenses}
+                    className="px-6 py-2.5 bg-secondary text-primary hover:bg-accent font-medium rounded-xl text-xs cursor-pointer transition-colors shadow-3xs"
+                  >
+                    Load Older Expenses
+                  </button>
+                </div>
+              )}
+
               {expensesOnly.length === 0 && (
                 <div className="border border-dashed border-gray-150 rounded-xl p-10 text-center text-gray-400 text-xs">
                   No purchase records logged to this pool yet. Add your first expense to get started.
@@ -1195,6 +1216,17 @@ export const GroupDetail: React.FC = () => {
                   </div>
                 </div>
               ))}
+
+              {hasMoreActivities && (
+                <div className="flex justify-start pl-1 mt-2">
+                  <button
+                    onClick={loadMoreActivities}
+                    className="px-6 py-2 bg-secondary text-primary hover:bg-accent font-medium rounded-xl text-[11px] cursor-pointer transition-colors shadow-3xs"
+                  >
+                    Load More Activity
+                  </button>
+                </div>
+              )}
 
               {activeGroupActivities.length === 0 && (
                 <div className="text-gray-400 italic py-6">No audits captured yet. Log a transaction to see changes!</div>

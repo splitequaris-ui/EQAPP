@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User as FirebaseUser, onAuthStateChanged } from "firebase/auth";
-import { collection, onSnapshot, query, where, doc, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { Group, Expense, Settlement, Activity, UserProfile, Subscription } from "../types";
 import { dbSetDoc, dbGetDoc, dbUpdateDoc } from "../lib/firestoreQuery";
@@ -39,6 +39,10 @@ interface AppContextType {
   theme: "light" | "dark";
   setTheme: (t: "light" | "dark") => void;
   updateFullProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  loadMoreExpenses: () => void;
+  loadMoreActivities: () => void;
+  hasMoreExpenses: boolean;
+  hasMoreActivities: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -90,6 +94,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeGroupExpenses, setActiveGroupExpenses] = useState<Expense[]>([]);
   const [activeGroupSettlements, setActiveGroupSettlements] = useState<Settlement[]>([]);
   const [activeGroupActivities, setActiveGroupActivities] = useState<Activity[]>([]);
+
+  const [expenseLimit, setExpenseLimit] = useState(20);
+  const [activityLimit, setActivityLimit] = useState(20);
+  const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
+  const [hasMoreActivities, setHasMoreActivities] = useState(true);
+
+  const loadMoreExpenses = () => setExpenseLimit((prev) => prev + 20);
+  const loadMoreActivities = () => setActivityLimit((prev) => prev + 20);
+
+  useEffect(() => {
+    setExpenseLimit(20);
+    setActivityLimit(20);
+    setHasMoreExpenses(true);
+    setHasMoreActivities(true);
+  }, [activeGroupId]);
 
   // Single brand theme — the light/dark toggle was removed. `theme` is fixed to
   // "light" and setTheme is a no-op so any legacy callers stay harmless.
@@ -518,16 +537,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Expenses subcollection snapshot
+    // 2. Expenses subcollection snapshot (paginated with limit and desc ordering)
     const expensesRef = collection(db, `groups/${activeGroupId}/expenses`);
-    const unsubExpenses = onSnapshot(expensesRef, (snapshot) => {
+    const qExpenses = query(expensesRef, orderBy("date", "desc"), limit(expenseLimit));
+    const unsubExpenses = onSnapshot(qExpenses, (snapshot) => {
       const list: Expense[] = [];
       snapshot.forEach((subDoc) => {
         list.push({ id: subDoc.id, ...subDoc.data() } as Expense);
       });
-      // Sort expenses by date descending
-      list.sort((a, b) => b.date.localeCompare(a.date));
       setActiveGroupExpenses(list);
+      setHasMoreExpenses(snapshot.size === expenseLimit);
     });
 
     // 3. Settlements subcollection snapshot
@@ -540,16 +559,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveGroupSettlements(list);
     });
 
-    // 4. Activities subcollection snapshot
+    // 4. Activities subcollection snapshot (paginated with limit and desc ordering)
     const activitiesRef = collection(db, `groups/${activeGroupId}/activities`);
-    const unsubActivities = onSnapshot(activitiesRef, (snapshot) => {
+    const qActivities = query(activitiesRef, orderBy("createdAt", "desc"), limit(activityLimit));
+    const unsubActivities = onSnapshot(qActivities, (snapshot) => {
       const list: Activity[] = [];
       snapshot.forEach((subDoc) => {
         list.push({ id: subDoc.id, ...subDoc.data() } as Activity);
       });
-      // Sort activities by creation time descending
-      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       setActiveGroupActivities(list);
+      setHasMoreActivities(snapshot.size === activityLimit);
     });
 
     return () => {
@@ -558,7 +577,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubSettlements();
       unsubActivities();
     };
-  }, [user, activeGroupId]);
+  }, [user, activeGroupId, expenseLimit, activityLimit]);
 
   const refetchActiveGroupData = () => {
     const backupId = activeGroupId;
@@ -591,6 +610,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         theme,
         setTheme,
         updateFullProfile,
+        loadMoreExpenses,
+        loadMoreActivities,
+        hasMoreExpenses,
+        hasMoreActivities,
       }}
     >
       {children}

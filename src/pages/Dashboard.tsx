@@ -290,9 +290,15 @@ export const Dashboard: React.FC = () => {
     try {
       const mergedNames: Record<string, string> = {};
       groups.forEach((g) => Object.assign(mergedNames, g.memberNames || {}));
+      const token = await user?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/insights", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           expenses: spendExpenses.map((e) => ({ title: e.title, amount: e.amount, category: e.category })),
           budget: groups.reduce((sum, g) => sum + (g.budget || 0), 0),

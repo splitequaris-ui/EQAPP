@@ -13,6 +13,7 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
   QueryConstraint,
   DocumentData,
   WithFieldValue
@@ -150,6 +151,37 @@ export async function dbGetDocs(collectionPath: string, ...constraints: QueryCon
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, collectionPath);
   }
+}
+
+// 2b. Get documents in chunks using the 'in' query operator to optimize batch fetches
+export async function dbGetDocsInBatches(collectionPath: string, field: string, values: string[]): Promise<any[]> {
+  if (values.length === 0) return [];
+
+  if (isMockMode()) {
+    const list = getLocalCollection(collectionPath);
+    const filtered = list.filter((item) => values.includes(item[field] || item.id || item.uid));
+    return filtered;
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < values.length; i += 30) {
+    chunks.push(values.slice(i, i + 30));
+  }
+
+  const results: any[] = [];
+  try {
+    const collRef = collection(db, collectionPath);
+    for (const chunk of chunks) {
+      const q = query(collRef, where(field, "in", chunk));
+      const snap = await getDocs(q);
+      snap.forEach((doc) => {
+        results.push({ id: doc.id, ...doc.data() });
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, collectionPath);
+  }
+  return results;
 }
 
 // 3. Set document at explicit location

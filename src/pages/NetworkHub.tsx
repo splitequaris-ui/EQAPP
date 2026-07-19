@@ -16,7 +16,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { dbGetDoc } from "../lib/firestoreQuery";
+import { dbGetDoc, dbGetDocsInBatches } from "../lib/firestoreQuery";
 import QRCode from "qrcode";
 import {
   Search,
@@ -162,25 +162,30 @@ export const NetworkHub: React.FC = () => {
       const receivedList = profile.receivedRequests || [];
       const sentList = profile.sentRequests || [];
 
-      // Fetch friends from users collection (we have permission since they are friends)
-      const friendsPromises = friendsList.map(async (uid) => {
-        const snap = await dbGetDoc("users", uid);
-        return snap && snap.exists() ? snap.data() : null;
-      });
+      // Fetch friends from users collection in batches
+      const friendsRes = await dbGetDocsInBatches("users", "uid", friendsList);
 
-      // Fetch requests from public profile resolver
-      const incomingPromises = receivedList.map((uid) => resolveUidToPublicProfile(uid));
-      const outgoingPromises = sentList.map((uid) => resolveUidToPublicProfile(uid));
+      // Fetch public profiles in batches
+      const incomingRes = await dbGetDocsInBatches("profiles", "uid", receivedList);
+      const outgoingRes = await dbGetDocsInBatches("profiles", "uid", sentList);
 
-      const [friendsRes, incomingRes, outgoingRes] = await Promise.all([
-        Promise.all(friendsPromises),
-        Promise.all(incomingPromises),
-        Promise.all(outgoingPromises),
-      ]);
+      // Fallback for any UIDs that failed to fetch from public profiles
+      const loadedIncomingUids = new Set(incomingRes.map(p => p.uid));
+      const loadedOutgoingUids = new Set(outgoingRes.map(p => p.uid));
 
-      setFriendsProfiles(friendsRes.filter(Boolean));
-      setIncomingProfiles(incomingRes.filter(Boolean));
-      setOutgoingProfiles(outgoingRes.filter(Boolean));
+      const missingIncomingUids = receivedList.filter(uid => !loadedIncomingUids.has(uid));
+      const missingOutgoingUids = sentList.filter(uid => !loadedOutgoingUids.has(uid));
+
+      const incomingFallbacks = await Promise.all(
+        missingIncomingUids.map(uid => resolveUidToPublicProfile(uid))
+      );
+      const outgoingFallbacks = await Promise.all(
+        missingOutgoingUids.map(uid => resolveUidToPublicProfile(uid))
+      );
+
+      setFriendsProfiles(friendsRes);
+      setIncomingProfiles([...incomingRes, ...incomingFallbacks]);
+      setOutgoingProfiles([...outgoingRes, ...outgoingFallbacks]);
     } catch (err) {
       console.error("Failed to load friend network details:", err);
     } finally {
