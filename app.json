@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Equaris",
+    "slug": "equaris",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "equaris",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f6f0e2"
+      },
+      "package": "com.equaris.equaris"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a3daa4eb-4bb1-43db-9dc7-949ce6041e0d"
+      }
+    }
+  }
+}
