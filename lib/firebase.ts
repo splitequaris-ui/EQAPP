@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 // @ts-ignore
-import { initializeAuth, getReactNativePersistence, signOut } from "firebase/auth";
+import { initializeAuth, getReactNativePersistence, signOut, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -14,15 +14,26 @@ const firebaseConfig = {
   measurementId: "G-1Y58ZDTWR2",
 };
 
+import { Platform } from "react-native";
+
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const db = getFirestore(app);
 
+// Initialize Auth compatibly for Web & Native
+const getAuthInstance = () => {
+  if (Platform.OS === "web") {
+    return getAuth(app);
+  } else {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  }
+};
+
 // @ts-ignore
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+export const auth = getAuthInstance();
 
 export async function logoutUser() {
   await signOut(auth);

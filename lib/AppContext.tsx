@@ -85,6 +85,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       // Map other routes e.g., /network, /money to corresponding tabs/stacks
       if (path === "/network") router.push("/(tabs)/network");
+      else if (path === "/groups") router.push("/(tabs)/groups");
       else if (path === "/money") router.push("/(tabs)/money");
       else if (path === "/profile") router.push("/(tabs)/profile");
       else if (path === "/settings") router.push("/(tabs)/profile");
@@ -186,6 +187,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 photoURL: currentUser.photoURL || "",
                 upiId: "",
                 isOnboarded: false,
+                friends: [],
+                sentRequests: [],
+                receivedRequests: [],
                 createdAt: new Date().toISOString(),
               };
               dbSetDoc("users", currentUser.uid, placeholder)

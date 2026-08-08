@@ -7,5 +7,10 @@ coverage/
 .env*
 !.env.example
 
+# Expo - native folders (CNG / Prebuild)
+android/
+ios/
+.expo/
+
 # Local Netlify folder
 .netlify

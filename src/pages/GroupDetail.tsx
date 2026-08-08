@@ -879,23 +879,6 @@ export const GroupDetail: React.FC = () => {
                         <span className={`text-[10px] ${isConfirming ? 'text-red-700/60' : 'text-gray-400'}`}>Total bill</span>
                       </div>
                       
-                      {isConfirming ? (
-                        <div className="flex items-center gap-2">
-                           <button onClick={() => setConfirmingDeleteId(null)} className="text-[10px] font-bold text-red-500 hover:text-red-800 uppercase tracking-wider cursor-pointer">Cancel</button>
-                           <button onClick={() => {
-                               handleDeleteExpense(exp.id);
-                               setConfirmingDeleteId(null);
-                             }} className="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer">Delete</button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmingDeleteId(exp.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-all cursor-pointer"
-                          title="Delete expense"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 );
@@ -1021,12 +1004,14 @@ export const GroupDetail: React.FC = () => {
                           View QR
                         </button>
 
-                        <button
+                         <button
                           id={`settle-direct-${idx}`}
-                          onClick={() => setProofFor(repay)}
+                          onClick={() => {
+                            handleMarkSettled(repay, { transactionId: "MANUAL_DIRECT", proofImage: "" });
+                          }}
                           className="text-[11px] font-semibold py-1.5 px-3 bg-black hover:bg-gray-800 text-white rounded-lg cursor-pointer transition-colors"
                         >
-                          Mark Settled
+                          Settle Up
                         </button>
                       </div>
                     </div>
@@ -1440,29 +1425,40 @@ export const GroupDetail: React.FC = () => {
               />
             </div>
 
-            <div className="w-full grid grid-cols-2 gap-3 pt-2">
+            <div className="w-full flex flex-col gap-2 pt-2">
               <button
                 type="button"
                 disabled={!customUpiId.trim()}
-                onClick={() => {
+                onClick={async () => {
                   const url = getUpiUrl(selectedRepayment.toUid, selectedRepayment.amount);
                   window.location.href = url;
+                  await handleMarkSettled(selectedRepayment, { transactionId: "UPI_DIRECT", proofImage: "" });
                 }}
-                className="py-2.5 bg-white border border-gray-200.90 hover:border-black text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Launch UPI app
+                Settle via UPI App
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = selectedRepayment;
-                  setShowPayModal(false);
-                  setProofFor(target);
-                }}
-                className="py-2.5 bg-black hover:bg-gray-850 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
-              >
-                Mark as Settled
-              </button>
+              
+              <div className="w-full grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleMarkSettled(selectedRepayment, { transactionId: "CASH_DIRECT", proofImage: "" });
+                  }}
+                  className="py-2 bg-success text-success-foreground hover:bg-[#327265] text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Settle via Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleMarkSettled(selectedRepayment, { transactionId: "OTHER_DIRECT", proofImage: "" });
+                  }}
+                  className="py-2 bg-secondary text-secondary-foreground hover:bg-accent text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Other Modes
+                </button>
+              </div>
             </div>
 
           </div>

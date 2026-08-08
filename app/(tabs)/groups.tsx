@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, ActivityIndicator, Alert, Platform } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
 import { dbSetDoc, dbDeleteDoc, dbGetDocsInBatches } from "../../lib/firestoreQuery";
@@ -38,6 +38,9 @@ export default function GroupsScreen() {
   const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [selectedGroupName, setSelectedGroupName] = useState("");
 
   // Fetch profiles for the user's friends list
   useEffect(() => {
@@ -121,25 +124,9 @@ export default function GroupsScreen() {
   };
 
   const handleDeleteGroup = (groupId: string, groupName: string) => {
-    Alert.alert(
-      "Delete Group",
-      `Are you sure you want to delete "${groupName}"? All split ledger history will be permanently deleted.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await dbDeleteDoc("groups", groupId);
-            } catch (err) {
-              console.error(err);
-              Alert.alert("Error", "Failed to delete group.");
-            }
-          }
-        }
-      ]
-    );
+    setSelectedGroupId(groupId);
+    setSelectedGroupName(groupName);
+    setConfirmVisible(true);
   };
 
   const toggleSelectFriend = (friend: any) => {
@@ -308,6 +295,104 @@ export default function GroupsScreen() {
                 )}
               </Pressable>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Confirmation Modal */}
+      <Modal
+        transparent={true}
+        visible={confirmVisible}
+        animationType="fade"
+        onRequestClose={() => setConfirmVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          justifyContent: "center",
+          alignItems: "center"
+        }}>
+          <View style={{
+            width: "90%",
+            maxWidth: 340,
+            backgroundColor: "#F4EFE6",
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: "#E8E2D5",
+            padding: 28,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.15,
+            shadowRadius: 20,
+            elevation: 10
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: "900",
+              color: "#2B2927",
+              marginBottom: 12,
+              textTransform: "uppercase",
+              letterSpacing: -0.5
+            }}>Delete this group?</Text>
+            <Text style={{
+              fontSize: 14,
+              color: "#5C5955",
+              lineHeight: 20,
+              marginBottom: 24
+            }}>This action cannot be undone. This group, along with all its expenses, settlements, and activity logs, will be permanently deleted.</Text>
+            <View style={{
+              flexDirection: "row",
+              gap: 12,
+              justifyContent: "space-between"
+            }}>
+              <Pressable
+                onPress={() => setConfirmVisible(false)}
+                style={{
+                  flex: 1,
+                  height: 44,
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  borderColor: "#C5BFA5",
+                  justifyContent: "center",
+                  alignItems: "center"
+                }}
+              >
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: "900",
+                  color: "#5C5955",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5
+                }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  setConfirmVisible(false);
+                  try {
+                    await dbDeleteDoc("groups", selectedGroupId);
+                  } catch (err) {
+                    console.error(err);
+                    Alert.alert("Error", "Failed to delete group.");
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "#E50000",
+                  justifyContent: "center",
+                  alignItems: "center"
+                }}
+              >
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: "900",
+                  color: "#FFFFFF",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5
+                }}>Delete Group</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator, Clipboard } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator, Clipboard, Share } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { calculateBalances } from "../../lib/settleEngine";
 import { db } from "../../lib/firebase";
@@ -93,15 +93,26 @@ export default function MoneyScreen() {
     }
   };
 
-  const exportStatementToClipboard = () => {
+  const exportStatementToClipboard = async () => {
     if (allExpenses.length === 0) {
       Alert.alert("Info", "No transactions to export.");
       return;
     }
     const headers = "Date,Title,Amount,Category,SplitType\n";
     const rows = allExpenses.map(e => `${e.date},${e.title},${e.amount},${e.category},${e.splitType}`).join("\n");
-    Clipboard.setString(headers + rows);
-    Alert.alert("Success", "Consolidated ledger data copied to clipboard in CSV format.");
+    const csvContent = headers + rows;
+    
+    Clipboard.setString(csvContent);
+    
+    try {
+      await Share.share({
+        title: "Exported Expenses CSV",
+        message: csvContent,
+      });
+    } catch (err) {
+      console.error("Failed to share CSV content:", err);
+      Alert.alert("Success", "Consolidated ledger data copied to clipboard in CSV format.");
+    }
   };
 
   return (

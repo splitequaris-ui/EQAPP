@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Modal, Image } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Modal, Image, Linking, Platform } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
 import { writeBatch, doc } from "firebase/firestore";
-import { dbSetDoc, dbDeleteDoc } from "../../lib/firestoreQuery";
+import { dbSetDoc, dbDeleteDoc, dbGetDoc } from "../../lib/firestoreQuery";
 import { calculateBalances, generateSettlementSuggestions } from "../../lib/settleEngine";
 import { Colors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
@@ -19,8 +19,10 @@ import {
   ChevronRight,
   Info,
   DollarSign,
-  X
+  X,
+  PieChart
 } from "lucide-react-native";
+import QRCode from "qrcode";
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,7 +45,7 @@ export default function GroupDetailScreen() {
     };
   }, [id]);
 
-  const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "settle" | "timeline">("expenses");
+  const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "sett" | "timeline" | "analytics">("expenses");
   
   // Add expense state
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -57,6 +59,9 @@ export default function GroupDetailScreen() {
   // Pay QR modal state
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedRepayment, setSelectedRepayment] = useState<any>(null);
+  const [recipientProfile, setRecipientProfile] = useState<any | null>(null);
+  const [fetchingRecipient, setFetchingRecipient] = useState(false);
+  const [upiQrUrl, setUpiQrUrl] = useState("");
 
   const groupBalances = useMemo(() => {
     if (!activeGroup) return {};
@@ -128,26 +133,35 @@ export default function GroupDetailScreen() {
   };
 
   const handleDeleteExpense = (expId: string, title: string) => {
-    Alert.alert(
-      "Delete Expense",
-      `Are you sure you want to delete "${title}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            if (!id) return;
-            try {
-              await dbDeleteDoc(`groups/${id}/expenses`, expId);
-            } catch (err) {
-              console.error(err);
-              Alert.alert("Error", "Failed to delete expense.");
-            }
+    const onDelete = async () => {
+      if (!id) return;
+      try {
+        await dbDeleteDoc(`groups/${id}/expenses`, expId);
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Failed to delete expense.");
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(`Delete Expense\n\nAre you sure you want to delete "${title}"?`);
+      if (confirmed) {
+        onDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Expense",
+        `Are you sure you want to delete "${title}"?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Delete", 
+            style: "destructive",
+            onPress: onDelete
           }
-        }
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleSettleSuggestion = async (sugg: any) => {
@@ -155,7 +169,7 @@ export default function GroupDetailScreen() {
     setShowPayModal(true);
   };
 
-  const confirmSettlement = async () => {
+  const confirmSettlement = async (paymentMode: string = "UPI") => {
     if (!selectedRepayment || !id || !user) return;
     try {
       const settleId = `settle_${Date.now()}`;
@@ -166,6 +180,7 @@ export default function GroupDetailScreen() {
         toUid: selectedRepayment.toUid,
         amount: selectedRepayment.amount,
         status: "settled" as const,
+        paymentMode,
         createdAt: new Date().toISOString(),
         settledAt: new Date().toISOString(),
       };
@@ -181,7 +196,7 @@ export default function GroupDetailScreen() {
       batch.set(expenseRef, {
         id: expId,
         groupId: id,
-        title: `Settled up: ${activeGroup?.memberNames[selectedRepayment.fromUid]} → ${activeGroup?.memberNames[selectedRepayment.toUid]}`,
+        title: `Settled up (${paymentMode}): ${activeGroup?.memberNames[selectedRepayment.fromUid]} → ${activeGroup?.memberNames[selectedRepayment.toUid]}`,
         amount: selectedRepayment.amount,
         paidBy: selectedRepayment.fromUid,
         category: "settlement",
@@ -200,7 +215,7 @@ export default function GroupDetailScreen() {
         id: actId,
         groupId: id,
         category: "settlement_marked",
-        message: `${activeGroup?.memberNames[selectedRepayment.fromUid]} settled ₹${selectedRepayment.amount} to ${activeGroup?.memberNames[selectedRepayment.toUid]}.`,
+        message: `${activeGroup?.memberNames[selectedRepayment.fromUid]} settled ₹${selectedRepayment.amount} to ${activeGroup?.memberNames[selectedRepayment.toUid]} via ${paymentMode}.`,
         actorId: user.uid,
         createdAt: new Date().toISOString(),
       });
@@ -208,7 +223,7 @@ export default function GroupDetailScreen() {
       await batch.commit();
       setShowPayModal(false);
       setSelectedRepayment(null);
-      Alert.alert("Success", "Settlement logged successfully.");
+      Alert.alert("Success", `Settlement via ${paymentMode} logged successfully.`);
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to confirm settlement.");
@@ -217,6 +232,69 @@ export default function GroupDetailScreen() {
 
   const getUpiUrl = (upi: string, name: string, amount: number) => {
     return `upi://pay?pa=${upi}&pn=${encodeURIComponent(name)}&am=${amount}&cu=INR`;
+  };
+
+  useEffect(() => {
+    if (selectedRepayment?.toUid) {
+      setFetchingRecipient(true);
+      dbGetDoc("users", selectedRepayment.toUid)
+        .then((docSnap) => {
+          if (docSnap && docSnap.exists()) {
+            setRecipientProfile(docSnap.data());
+          } else {
+            setRecipientProfile(null);
+          }
+        })
+        .catch((err) => {
+          console.error("Error fetching recipient profile:", err);
+          setRecipientProfile(null);
+        })
+        .finally(() => {
+          setFetchingRecipient(false);
+        });
+    } else {
+      setRecipientProfile(null);
+      setUpiQrUrl("");
+    }
+  }, [selectedRepayment]);
+
+  useEffect(() => {
+    if (selectedRepayment && activeGroup) {
+      const upiId = recipientProfile?.upiId || "repay@upi";
+      const name = activeGroup.memberNames[selectedRepayment.toUid] || "Member";
+      const url = getUpiUrl(upiId, name, selectedRepayment.amount);
+      QRCode.toDataURL(url, { margin: 1, width: 300 })
+        .then((dataUrl) => setUpiQrUrl(dataUrl))
+        .catch((err) => console.error("Error generating UPI QR:", err));
+    }
+  }, [selectedRepayment, recipientProfile, activeGroup]);
+
+  const launchUpiApp = async () => {
+    if (!selectedRepayment || !activeGroup) return;
+    const upiId = recipientProfile?.upiId || "repay@upi";
+    const name = activeGroup.memberNames[selectedRepayment.toUid] || "Member";
+    const url = getUpiUrl(upiId, name, selectedRepayment.amount);
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL(url);
+      }
+      // Auto settle immediately
+      await confirmSettlement("UPI");
+    } catch (err) {
+      console.error("Failed to open UPI app", err);
+      // Fallback: still settle it directly if they choose to do so, or warn them
+      Alert.alert(
+        "Direct UPI Launch failed",
+        "Could not launch UPI payment app. Would you like to mark this as settled anyway?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Mark Settled", onPress: () => confirmSettlement("UPI") }
+        ]
+      );
+    }
   };
 
   if (!activeGroup) {
@@ -242,9 +320,9 @@ export default function GroupDetailScreen() {
 
       {/* Tabs */}
       <View style={styles.tabsRow}>
-        {(["expenses", "balances", "sett", "timeline"] as const).map((tab) => {
+        {(["expenses", "balances", "sett", "timeline", "analytics"] as const).map((tab) => {
           const active = activeTab === tab;
-          const labels = { expenses: "Expenses", balances: "Balances", sett: "Settle Up", timeline: "Timeline" };
+          const labels = { expenses: "Expenses", balances: "Balances", sett: "Settle Up", timeline: "Timeline", analytics: "Analytics" };
           return (
             <Pressable
               key={tab}
@@ -282,11 +360,6 @@ export default function GroupDetailScreen() {
                     </View>
                     <View style={{ alignItems: "flex-end", gap: 6 }}>
                       <Text style={styles.expAmount}>₹{item.amount}</Text>
-                      {item.paidBy === user?.uid && (
-                        <Pressable onPress={() => handleDeleteExpense(item.id, item.title)}>
-                          <Trash2 size={16} color={Colors.destructive} />
-                        </Pressable>
-                      )}
                     </View>
                   </View>
                 );
@@ -322,20 +395,52 @@ export default function GroupDetailScreen() {
               <Text style={styles.emptyText}>Everyone is fully settled up!</Text>
             ) : (
               suggestions.map((sugg, idx) => {
-                const from = sugg.fromUid === user?.uid ? "You" : activeGroup.memberNames[sugg.fromUid];
-                const to = sugg.toUid === user?.uid ? "you" : activeGroup.memberNames[sugg.toUid];
+                const fromName = activeGroup.memberNames[sugg.fromUid] || "Someone";
+                const toName = activeGroup.memberNames[sugg.toUid] || "Someone";
+                
                 return (
-                  <View key={idx} style={styles.suggestionCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.suggText}>
-                        {from} owe(s) {to} <Text style={{ fontWeight: "bold" }}>₹{sugg.amount}</Text>
-                      </Text>
+                  <View key={idx} style={styles.webSuggestionCard}>
+                    <Text style={styles.webSuggTag}>{activeGroup.name.toUpperCase()}</Text>
+                    
+                    <View style={styles.webSuggHeader}>
+                      <View style={styles.webSuggIconBg}>
+                        <Text style={styles.webSuggIconText}>₹</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.webSuggTitle}>{fromName} ➔ {toName}</Text>
+                        <Text style={styles.webSuggSubtitle}>Peer payment suggestion</Text>
+                      </View>
                     </View>
-                    {sugg.fromUid === user?.uid && (
-                      <Pressable style={styles.settleBtn} onPress={() => handleSettleSuggestion(sugg)}>
-                        <Text style={styles.settleBtnText}>Pay</Text>
-                      </Pressable>
-                    )}
+
+                    <View style={styles.webSuggDivider} />
+
+                    <View style={styles.webSuggFooter}>
+                      <View>
+                        <Text style={styles.webSuggAmount}>₹{sugg.amount.toLocaleString("en-IN")}</Text>
+                        <Text style={styles.webSuggSubLabel}>Repayment amount</Text>
+                      </View>
+                      
+                      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                        <Pressable 
+                          style={styles.webShowQrBtn} 
+                          onPress={() => {
+                            setSelectedRepayment(sugg);
+                            setShowPayModal(true);
+                          }}
+                        >
+                          <Text style={styles.webShowQrText}>Show QR</Text>
+                        </Pressable>
+                        <Pressable 
+                          style={styles.webMarkSettleBtn} 
+                          onPress={() => {
+                            setSelectedRepayment(sugg);
+                            confirmSettlement("Direct Settle");
+                          }}
+                        >
+                          <Text style={styles.webMarkSettleText}>Mark Settle</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                   </View>
                 );
               })
@@ -355,6 +460,46 @@ export default function GroupDetailScreen() {
                   <Text style={styles.actDate}>{new Date(act.createdAt).toLocaleString()}</Text>
                 </View>
               ))
+            )}
+          </View>
+        )}
+
+        {activeTab === "analytics" && (
+          <View style={styles.content}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <PieChart size={20} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Group Analytics</Text>
+            </View>
+            {activeGroupExpenses.filter(e => e.category !== "settlement").length === 0 ? (
+              <Text style={styles.emptyText}>No spending data to analyze in this group.</Text>
+            ) : (
+              <View style={styles.analyticsCard}>
+                <Text style={styles.analyticsSub}>Category Distribution Breakdown</Text>
+                {(() => {
+                  const spendExpenses = activeGroupExpenses.filter(e => e.category !== "settlement");
+                  const totals = spendExpenses.reduce((acc, exp) => {
+                    acc[exp.category] = (acc[exp.category] || 0) + (exp.amount || 0);
+                    return acc;
+                  }, {} as Record<string, number>);
+                  const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+                  const grandTotal = sorted.reduce((sum, item) => sum + item[1], 0);
+
+                  return sorted.map(([cat, amount]) => {
+                    const pct = Math.round((amount / grandTotal) * 100);
+                    return (
+                      <View key={cat} style={styles.analyticsRow}>
+                        <View style={styles.analyticsTextRow}>
+                          <Text style={styles.analyticsLabel}>{cat.toUpperCase()}</Text>
+                          <Text style={styles.analyticsVal}>₹{amount.toLocaleString("en-IN")} ({pct}%)</Text>
+                        </View>
+                        <View style={styles.progressBarBg}>
+                          <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+                        </View>
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
             )}
           </View>
         )}
@@ -433,33 +578,66 @@ export default function GroupDetailScreen() {
         <View style={styles.qrOverlay}>
           <View style={styles.qrContent}>
             <View style={styles.qrHeader}>
-              <Text style={styles.qrTitle}>Repay Settle Dues</Text>
+              <Text style={styles.qrTitle}>Scan BHIM UPI repricement</Text>
               <Pressable onPress={() => setShowPayModal(false)}>
                 <X size={20} color={Colors.foreground} />
               </Pressable>
             </View>
 
             {selectedRepayment && (
-              <View style={{ alignItems: "center", gap: 12 }}>
-                <Text style={styles.qrDesc}>
-                  Scan to pay {activeGroup.memberNames[selectedRepayment.toUid]} ₹{selectedRepayment.amount}
+              <View style={{ alignItems: "center", gap: 12, width: "100%" }}>
+                <Text style={styles.repayInstantlyLabel}>REPAY INSTANTLY</Text>
+                
+                <Text style={styles.repayDirectionText}>
+                  {(activeGroup.memberNames[selectedRepayment.fromUid] || "Someone")} ➔ {(activeGroup.memberNames[selectedRepayment.toUid] || "Someone")}
+                </Text>
+
+                <Text style={styles.repayLargeAmount}>
+                  ₹{selectedRepayment.amount.toLocaleString("en-IN")}
                 </Text>
                 
-                {/* Fallback mock QR code generation linking to standard UPI pay spec */}
-                <Image
-                  source={{ 
-                    uri: `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encodeURIComponent(
-                      getUpiUrl("repay@upi", activeGroup.memberNames[selectedRepayment.toUid], selectedRepayment.amount)
-                    )}`
-                  }} 
-                  style={styles.qrImg} 
-                />
+                {fetchingRecipient ? (
+                  <View style={{ height: 180, justifyContent: "center" }}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                  </View>
+                ) : (upiQrUrl && recipientProfile?.upiId) ? (
+                  <View style={styles.qrBoxWrapper}>
+                    <Image source={{ uri: upiQrUrl }} style={styles.qrImg as any} />
+                  </View>
+                ) : (
+                  <View style={{ height: 120, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: Colors.border, borderRadius: 14, width: "100%", padding: 12, backgroundColor: Colors.background }}>
+                    <Text style={{ fontSize: 11, color: Colors.mutedForeground, textAlign: "center" }}>UPI QR Code not available. Recipient has not configured their UPI ID.</Text>
+                  </View>
+                )}
 
-                <Text style={styles.qrInfo}>After completing payment, tap Confirm to update ledger balances.</Text>
+                <Text style={styles.qrInfoText}>
+                  Scan with GPay, PhonePe, Paytm, or any banking app. Once completed, tap below to balance the accounting ledger.
+                </Text>
+
+                <View style={{ width: "100%", marginTop: 4, gap: 6 }}>
+                  <Text style={styles.recipientUpiLabel}>Recipient UPI Id:</Text>
+                  <View style={styles.recipientUpiInput}>
+                    <Text style={styles.recipientUpiText}>
+                      {recipientProfile?.upiId || "No UPI VPA configured"}
+                    </Text>
+                  </View>
+                </View>
                 
-                <Pressable style={styles.confirmSettleBtn} onPress={confirmSettlement}>
-                  <Text style={styles.confirmSettleText}>Confirm Repayed</Text>
-                </Pressable>
+                <View style={{ flexDirection: "row", gap: 12, width: "100%", marginTop: 12 }}>
+                  <Pressable 
+                    style={[styles.webShowQrBtn, { flex: 1, height: 44, justifyContent: "center" }]} 
+                    onPress={launchUpiApp}
+                    disabled={!recipientProfile?.upiId}
+                  >
+                    <Text style={[styles.webShowQrText, { fontSize: 13, textAlign: "center" }]}>Launch UPI app</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.webMarkSettleBtn, { flex: 1, height: 44, justifyContent: "center" }]} 
+                    onPress={() => confirmSettlement("Direct UPI Settle")}
+                  >
+                    <Text style={[styles.webMarkSettleText, { fontSize: 13, textAlign: "center" }]}>Mark as Settled</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
           </View>
@@ -631,6 +809,151 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 12,
     padding: 14,
+  },
+  webSuggestionCard: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+  },
+  webSuggTag: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: Colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  webSuggHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  webSuggIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  webSuggIconText: {
+    fontSize: 16,
+    color: Colors.foreground,
+    fontWeight: "bold",
+  },
+  webSuggTitle: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+    color: Colors.foreground,
+  },
+  webSuggSubtitle: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+  },
+  webSuggDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 14,
+  },
+  webSuggFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  webSuggAmount: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: Colors.foreground,
+  },
+  webSuggSubLabel: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+  },
+  webShowQrBtn: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.background,
+  },
+  webShowQrText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: Colors.foreground,
+  },
+  webMarkSettleBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.foreground,
+  },
+  webMarkSettleText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: Colors.background,
+  },
+  repayInstantlyLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.mono,
+    color: Colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1.5,
+  },
+  repayDirectionText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: "bold",
+    color: Colors.foreground,
+    marginVertical: 2,
+  },
+  repayLargeAmount: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: "900",
+    color: Colors.foreground,
+    marginBottom: 8,
+  },
+  qrBoxWrapper: {
+    padding: 12,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 16,
+    marginBottom: 4,
+  },
+  qrInfoText: {
+    fontSize: 11,
+    color: Colors.mutedForeground,
+    textAlign: "center",
+    lineHeight: 16,
+    paddingHorizontal: 16,
+  },
+  recipientUpiLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.mono,
+    color: Colors.mutedForeground,
+    fontWeight: "bold",
+  },
+  recipientUpiInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: "100%",
+  },
+  recipientUpiText: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: Colors.foreground,
   },
   suggText: {
     fontSize: Typography.fontSize.sm,
@@ -808,5 +1131,64 @@ const styles = StyleSheet.create({
     color: Colors.successForeground,
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
+  },
+  upiBtn: {
+    backgroundColor: Colors.primary,
+    height: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    marginVertical: 4,
+  },
+  upiBtnText: {
+    color: Colors.primaryForeground,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+  },
+  analyticsCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 20,
+  },
+  analyticsSub: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+    color: Colors.foreground,
+    marginBottom: 16,
+  },
+  analyticsRow: {
+    marginBottom: 16,
+  },
+  analyticsTextRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  analyticsLabel: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "600",
+    color: Colors.mutedForeground,
+  },
+  analyticsVal: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    color: Colors.foreground,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: Colors.background,
+    borderRadius: 4,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  progressBarFill: {
+    height: "100%",
+    backgroundColor: Colors.primary,
+    borderRadius: 4,
   },
 });

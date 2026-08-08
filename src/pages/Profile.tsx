@@ -207,34 +207,34 @@ export const Profile: React.FC = () => {
               <form onSubmit={save} className="flex flex-col gap-4">
                 <div>
                   <label className={labelCls}>Nickname (what we call you)</label>
-                  <div className="relative mt-1.5">
+                  <div className="relative mt-1.5 opacity-60">
                     <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={24} placeholder="Leave blank to use first name" className={inputCls} />
+                    <input value={nickname} disabled maxLength={24} placeholder="Leave blank to use first name" className={inputCls} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>First name</label>
-                    <div className="relative mt-1.5">
+                    <div className="relative mt-1.5 opacity-60">
                       <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" className={inputCls} />
+                      <input value={firstName} disabled placeholder="First name" className={inputCls} />
                     </div>
                   </div>
                   <div>
                     <label className={labelCls}>Surname</label>
-                    <div className="relative mt-1.5">
+                    <div className="relative mt-1.5 opacity-60">
                       <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="Surname" className={inputCls} />
+                      <input value={surname} disabled placeholder="Surname" className={inputCls} />
                     </div>
                   </div>
                 </div>
 
                 <div>
                   <label className={labelCls}>Phone number</label>
-                  <div className="relative mt-1.5">
+                  <div className="relative mt-1.5 opacity-60">
                     <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" placeholder="+91 98765 43210" className={inputCls} />
+                    <input value={phone} disabled type="tel" placeholder="+91 98765 43210" className={inputCls} />
                   </div>
                 </div>
 

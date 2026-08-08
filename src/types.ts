@@ -93,6 +93,9 @@ export interface Group {
     recurring?: boolean;
   }; // New
   defaultCategories?: string[]; // New
+  status?: string;
+  isDirectSplit?: boolean;
+  category?: string;
 }
 
 export interface Subscription {

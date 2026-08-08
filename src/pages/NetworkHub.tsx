@@ -162,8 +162,8 @@ export const NetworkHub: React.FC = () => {
       const receivedList = profile.receivedRequests || [];
       const sentList = profile.sentRequests || [];
 
-      // Fetch friends from users collection in batches
-      const friendsRes = await dbGetDocsInBatches("users", "uid", friendsList);
+      // Fetch friends from profiles collection in batches
+      const friendsRes = await dbGetDocsInBatches("profiles", "uid", friendsList);
 
       // Fetch public profiles in batches
       const incomingRes = await dbGetDocsInBatches("profiles", "uid", receivedList);

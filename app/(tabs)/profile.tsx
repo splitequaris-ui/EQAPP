@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Platform, Modal } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { logoutUser } from "../../lib/firebase";
 import { Colors } from "../../constants/colors";
@@ -16,6 +16,7 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState("");
   const [upiId, setUpiId] = useState("");
   const [paymentPref, setPaymentPref] = useState<"cash" | "upi">("upi");
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   const hydrate = () => {
     const parts = (profile?.name || "").split(" ");
@@ -100,9 +101,9 @@ export default function ProfileScreen() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>First Name</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { opacity: 0.6 }]}
                   value={firstName}
-                  onChangeText={setFirstName}
+                  editable={false}
                   placeholder="First Name"
                   placeholderTextColor={Colors.mutedForeground}
                 />
@@ -110,9 +111,9 @@ export default function ProfileScreen() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Surname</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { opacity: 0.6 }]}
                   value={surname}
-                  onChangeText={setSurname}
+                  editable={false}
                   placeholder="Surname"
                   placeholderTextColor={Colors.mutedForeground}
                 />
@@ -120,9 +121,9 @@ export default function ProfileScreen() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Nickname</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { opacity: 0.6 }]}
                   value={nickname}
-                  onChangeText={setNickname}
+                  editable={false}
                   placeholder="Nickname"
                   placeholderTextColor={Colors.mutedForeground}
                 />
@@ -130,16 +131,16 @@ export default function ProfileScreen() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Phone</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { opacity: 0.6 }]}
                   value={phone}
-                  onChangeText={setPhone}
+                  editable={false}
                   placeholder="Phone number"
                   placeholderTextColor={Colors.mutedForeground}
                   keyboardType="phone-pad"
                 />
               </View>
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>UPI ID</Text>
+                <Text style={styles.label}>UPI ID - Optional</Text>
                 <TextInput
                   style={styles.input}
                   value={upiId}
@@ -174,11 +175,109 @@ export default function ProfileScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.9 }]}
-          onPress={() => logoutUser()}
+          onPress={() => setConfirmVisible(true)}
         >
           <LogOut size={16} color={Colors.primaryForeground} style={{ marginRight: 6 }} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </Pressable>
+
+        {/* Custom Confirmation Modal */}
+        <Modal
+          transparent={true}
+          visible={confirmVisible}
+          animationType="fade"
+          onRequestClose={() => setConfirmVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center"
+          }}>
+            <View style={{
+              width: "90%",
+              maxWidth: 340,
+              backgroundColor: "#F4EFE6",
+              borderRadius: 28,
+              borderWidth: 1,
+              borderColor: "#E8E2D5",
+              padding: 28,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.15,
+              shadowRadius: 20,
+              elevation: 10
+            }}>
+              <Text style={{
+                fontSize: 20,
+                fontWeight: "900",
+                color: "#2B2927",
+                marginBottom: 12,
+                textTransform: "uppercase",
+                letterSpacing: -0.5
+              }}>Sign Out?</Text>
+              <Text style={{
+                fontSize: 14,
+                color: "#5C5955",
+                lineHeight: 20,
+                marginBottom: 24
+              }}>Are you sure you want to sign out? You will need to log back in to access your ledger.</Text>
+              <View style={{
+                flexDirection: "row",
+                gap: 12,
+                justifyContent: "space-between"
+              }}>
+                <Pressable
+                  onPress={() => setConfirmVisible(false)}
+                  style={{
+                    flex: 1,
+                    height: 44,
+                    borderRadius: 22,
+                    borderWidth: 1,
+                    borderColor: "#C5BFA5",
+                    justifyContent: "center",
+                    alignItems: "center"
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: "900",
+                    color: "#5C5955",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5
+                  }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={async () => {
+                    setConfirmVisible(false);
+                    try {
+                      await logoutUser();
+                    } catch (err) {
+                      console.error("Sign out failed:", err);
+                      Alert.alert("Error", "Failed to sign out.");
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    height: 44,
+                    borderRadius: 22,
+                    backgroundColor: "#E50000",
+                    justifyContent: "center",
+                    alignItems: "center"
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: "900",
+                    color: "#FFFFFF",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5
+                  }}>Sign Out</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </ScrollView>
   );

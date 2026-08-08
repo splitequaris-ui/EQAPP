@@ -6,12 +6,15 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "equaris",
+    "icon": "./assets/icon.png",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#f6f0e2"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F2EDE3"
       },
       "package": "com.equaris.equaris"
     },
@@ -21,8 +24,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a3daa4eb-4bb1-43db-9dc7-949ce6041e0d"
+        "projectId": "651e4270-7234-4b77-b855-3a1a710cf931"
       }
-    }
+    },
+    "owner": "parth1304200"
   }
 }

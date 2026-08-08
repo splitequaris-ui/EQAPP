@@ -99,6 +99,26 @@ export async function dbGetDocs(collectionPath: string, ...constraints: QueryCon
 export async function dbGetDocsInBatches(collectionPath: string, field: string, values: string[]): Promise<any[]> {
   if (values.length === 0) return [];
 
+  // Optimization & Rules Bypass:
+  // If we are querying profiles or users by uid, fetch each document individually using getDoc.
+  // This executes "get" operations instead of "list" queries, bypassing firestore listing rule constraints!
+  if ((collectionPath === "profiles" || collectionPath === "users") && field === "uid") {
+    const promises = values.map(async (id) => {
+      try {
+        const docRef = doc(db, collectionPath, id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          return { id: docSnap.id, ...docSnap.data() };
+        }
+      } catch (err) {
+        console.error(`Error fetching individual doc ${collectionPath}/${id}:`, err);
+      }
+      return null;
+    });
+    const results = await Promise.all(promises);
+    return results.filter((item): item is any => item !== null);
+  }
+
   const chunks: string[][] = [];
   for (let i = 0; i < values.length; i += 30) {
     chunks.push(values.slice(i, i + 30));

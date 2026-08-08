@@ -51,8 +51,8 @@ service cloud.firestore {
       //      accepts, declines and QR connect without exposing any other field.
       allow update: if isVerifiedUser() && isValidId(userId) && (
                       ( userId == request.auth.uid && isValidUser(incoming()) &&
-                        incoming().uid == existing().uid &&
-                        incoming().email == existing().email )
+                        incoming().get('uid', '') == existing().get('uid', '') &&
+                        incoming().get('email', '') == existing().get('email', '') )
                       ||
                       ( userId != request.auth.uid && isSelfConnectionMutation() )
                     );
@@ -95,8 +95,7 @@ service cloud.firestore {
 
     // 1c. Profiles collection — public fields only.
     match /profiles/{userId} {
-      allow get: if isVerifiedUser() && isValidId(userId);
-      allow list: if false;
+      allow read: if isVerifiedUser();
       allow create: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid && isValidProfile(incoming());
       allow update: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid && isValidProfile(incoming());
       allow delete: if false;

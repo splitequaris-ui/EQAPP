@@ -1,14 +1,15 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Platform, Alert } from "react-native";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { Colors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { useApp } from "../../lib/AppContext";
-import { AlertCircle, Lock, Mail, User } from "lucide-react-native";
+import { AlertCircle, Lock, Mail, User, Sparkles, ChevronLeft } from "lucide-react-native";
 
 export default function LoginScreen() {
   const { navigate } = useApp();
+  const [stage, setStage] = useState<"welcome" | "auth">("welcome");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,8 +28,30 @@ export default function LoginScreen() {
       "auth/invalid-email": "Please enter a valid email address.",
       "auth/too-many-requests": "Too many attempts. Please try again later.",
       "auth/network-request-failed": "Network error. Check your connection.",
+      "auth/popup-closed-by-user": "Google sign-in was cancelled.",
     };
     return map[code] || err?.message || "Authentication failed.";
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      if (Platform.OS === "web") {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+      } else {
+        Alert.alert(
+          "Mobile Google Login",
+          "Direct Google popup sign-in is supported on the web version of Equaris. Please log in with your email & password on mobile."
+        );
+      }
+    } catch (err: any) {
+      setAuthError(getFriendlyError(err));
+      setStage("auth"); // Move to auth stage to show the error alert
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleEmailAuth = async () => {
@@ -73,8 +96,82 @@ export default function LoginScreen() {
     }
   };
 
+  if (stage === "welcome") {
+    return (
+      <View style={styles.welcomeContainer}>
+        <View style={styles.welcomeHeader}>
+          <Image
+            source={require("../../src/assets/welcome-logo-trans.png")}
+            style={styles.welcomeLogo}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.illustrationContainer}>
+          <Image
+            source={require("../../src/assets/couple-illustration-trans.png")}
+            style={styles.welcomeIllustration}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.welcomeContent}>
+          <Text style={styles.welcomeTitle}>Share. Split. Settle.</Text>
+
+          <View style={styles.welcomeButtonGroup}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.welcomeBtn,
+                pressed && { opacity: 0.9 },
+                authLoading && { backgroundColor: Colors.muted }
+              ]}
+              onPress={handleGoogleSignIn}
+              disabled={authLoading}
+            >
+              {authLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.welcomeBtnText}>Continue with Google</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.welcomeBtn, pressed && { opacity: 0.9 }]}
+              onPress={() => {
+                setMode("signup");
+                setStage("auth");
+              }}
+            >
+              <View style={styles.signUpBtnContent}>
+                <Text style={styles.welcomeBtnText}>Sign Up</Text>
+                <Sparkles size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+              </View>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              setMode("signin");
+              setStage("auth");
+            }}
+            style={styles.welcomeLoginLink}
+          >
+            <Text style={styles.welcomeLoginText}>
+              Already have an account? <Text style={styles.welcomeLoginHighlight}>Log In</Text>
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <Pressable style={styles.backBtn} onPress={() => setStage("welcome")}>
+        <ChevronLeft size={20} color={Colors.foreground} />
+        <Text style={styles.backBtnText}>Back</Text>
+      </Pressable>
+
       <View style={styles.card}>
         <View style={styles.header}>
           <Text style={styles.logoText}>Equaris</Text>
@@ -311,5 +408,93 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.sm,
     color: Colors.primary,
     fontWeight: Typography.fontWeight.semibold,
+  },
+  welcomeContainer: {
+    flex: 1,
+    backgroundColor: "#e4dbcf",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  welcomeHeader: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 10,
+    marginBottom: 5,
+  },
+  welcomeLogo: {
+    width: 70,
+    height: 70,
+  },
+  illustrationContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    marginVertical: 10,
+  },
+  welcomeIllustration: {
+    width: "85%",
+    height: undefined,
+    aspectRatio: 494 / 545,
+    maxHeight: 280,
+  },
+  welcomeContent: {
+    width: "100%",
+    alignItems: "center",
+    paddingBottom: 15,
+  },
+  welcomeTitle: {
+    fontSize: Typography.fontSize.xxl,
+    fontWeight: "bold",
+    color: "#3D1B24",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  welcomeButtonGroup: {
+    width: "100%",
+    gap: 12,
+    marginBottom: 16,
+  },
+  welcomeBtn: {
+    backgroundColor: "#3D1F25",
+    height: 48,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  welcomeBtnText: {
+    color: "#FFFFFF",
+    fontSize: Typography.fontSize.base,
+    fontWeight: "bold",
+  },
+  signUpBtnContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  welcomeLoginLink: {
+    paddingVertical: 6,
+  },
+  welcomeLoginText: {
+    fontSize: Typography.fontSize.sm,
+    color: "#5E5649",
+  },
+  welcomeLoginHighlight: {
+    color: "#3D1F25",
+    fontWeight: "bold",
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+    alignSelf: "flex-start",
+  },
+  backBtnText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.foreground,
+    marginLeft: 4,
+    fontWeight: "bold",
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert, Platform } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
@@ -68,28 +68,36 @@ export default function SubscriptionDetailScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      "Cancel Subscription",
-      "Are you sure you want to stop tracking this subscription?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Delete the document
-              await deleteDoc(doc(db, "subscriptions", sub.id));
-              Alert.alert("Success", "Subscription deleted.");
-              router.back();
-            } catch (err) {
-              console.error(err);
-              Alert.alert("Error", "Failed to delete subscription.");
-            }
+    const onDelete = async () => {
+      try {
+        await deleteDoc(doc(db, "subscriptions", sub.id));
+        Alert.alert("Success", "Subscription deleted.");
+        router.back();
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Failed to delete subscription.");
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Cancel Subscription\n\nAre you sure you want to stop tracking this subscription?");
+      if (confirmed) {
+        onDelete();
+      }
+    } else {
+      Alert.alert(
+        "Cancel Subscription",
+        "Are you sure you want to stop tracking this subscription?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: onDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   return (

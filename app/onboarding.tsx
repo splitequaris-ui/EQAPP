@@ -276,7 +276,7 @@ export default function OnboardingScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>UPI ID (VPA)</Text>
+              <Text style={styles.label}>UPI ID (VPA) - Optional</Text>
               <TextInput
                 style={styles.input}
                 value={upiId}

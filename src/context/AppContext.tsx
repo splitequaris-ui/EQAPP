@@ -242,7 +242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else {
               // Brand-new account: create an empty profile with isOnboarded = false
               // so Onboarding is triggered. NO fake/seeded data.
-              const placeholder: UserProfile = {
+               const placeholder: UserProfile = {
                 uid: currentUser.uid,
                 // Name must be non-empty to satisfy Firestore validation rules.
                 name:
@@ -253,6 +253,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 photoURL: currentUser.photoURL || "",
                 upiId: "",
                 isOnboarded: false,
+                friends: [],
+                sentRequests: [],
+                receivedRequests: [],
                 createdAt: new Date().toISOString(),
               };
               dbSetDoc("users", currentUser.uid, placeholder)

@@ -223,3 +223,21 @@ svg.text-slate-500,
 .text-slate-500 svg {
   color: #524b3f !important;
 }
+
+/* Card and Box Premium Hover Micro-interactions */
+.bg-white,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl,
+.card {
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+.bg-white:hover,
+.rounded-xl:hover,
+.rounded-2xl:hover,
+.rounded-3xl:hover,
+.card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 30px rgba(42, 38, 33, 0.08) !important;
+}

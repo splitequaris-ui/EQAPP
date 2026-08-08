@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Image, ActivityIndicator, Alert, Clipboard } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Image, ActivityIndicator, Alert, Clipboard, Modal } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
 import { doc, writeBatch, arrayUnion, arrayRemove } from "firebase/firestore";
 import { dbGetDoc, dbGetDocsInBatches, dbSetDoc } from "../../lib/firestoreQuery";
 import { Colors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
-import { Search, UserPlus, Check, X, Clipboard as ClipboardIcon, Share2, AlertCircle } from "lucide-react-native";
+import { Search, UserPlus, Check, X, Clipboard as ClipboardIcon, Share2, AlertCircle, Camera } from "lucide-react-native";
+import QRCode from "qrcode";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 export default function NetworkScreen() {
   const { user, profile } = useApp();
@@ -21,8 +23,27 @@ export default function NetworkScreen() {
   const [loadingLists, setLoadingLists] = useState(false);
   const [busyUid, setBusyUid] = useState<string | null>(null);
 
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
+
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanInput, setScanInput] = useState("");
+  const [scannedUser, setScannedUser] = useState<any | null>(null);
+  const [searchingScan, setSearchingScan] = useState(false);
+  const [scanStatus, setScanStatus] = useState<"idle" | "found" | "not_found">("idle");
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
+
   const connectUrl = profile?.username ? `equaris://network?connect=${encodeURIComponent(profile.username)}` : "";
-  const qrCodeUrl = connectUrl ? `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encodeURIComponent(connectUrl)}` : "";
+
+  useEffect(() => {
+    if (connectUrl) {
+      QRCode.toDataURL(connectUrl, { margin: 1, width: 300 })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch((err) => console.error("Error generating local QR:", err));
+    } else {
+      setQrCodeDataUrl("");
+    }
+  }, [connectUrl]);
 
   const loadLists = async () => {
     if (!user || !profile) return;
@@ -174,47 +195,85 @@ export default function NetworkScreen() {
     }
   };
 
+  const resolveProfileForText = async (text: string) => {
+    let targetUsername = text.trim();
+    if (targetUsername.includes("connect=")) {
+      const parts = targetUsername.split("connect=");
+      targetUsername = parts[parts.length - 1];
+    }
+    const clean = targetUsername.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    if (!clean) return;
+
+    setSearchingScan(true);
+    setScannedUser(null);
+    setScanStatus("idle");
+
+    try {
+      const snap = await dbGetDoc("usernames", clean);
+      if (snap && snap.exists()) {
+        const uid = snap.data()?.uid;
+        if (uid === user?.uid) {
+          Alert.alert("Notice", "That is your own username.");
+          setScanStatus("idle");
+          return;
+        }
+        const profileSnap = await dbGetDoc("profiles", uid);
+        if (profileSnap && profileSnap.exists()) {
+          setScannedUser(profileSnap.data());
+          setScanStatus("found");
+        } else {
+          setScanStatus("not_found");
+        }
+      } else {
+        setScanStatus("not_found");
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to resolve connection link.");
+    } finally {
+      setSearchingScan(false);
+    }
+  };
+
+  const handleScanLink = async () => {
+    await resolveProfileForText(scanInput);
+  };
+
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
+    if (scanned) return;
+    setScanned(true);
+    setScanInput(data);
+    await resolveProfileForText(data);
+  };
+
+  const handleConnectScanned = async () => {
+    if (!scannedUser) return;
+    await sendFriendRequest(scannedUser.uid);
+    setShowScanModal(false);
+    setScanInput("");
+    setScannedUser(null);
+    setScanStatus("idle");
+    setScanned(false);
+  };
+
+  const openScanModal = async () => {
+    setShowScanModal(true);
+    setScanned(false);
+    if (!permission || !permission.granted) {
+      await requestPermission();
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Search Section */}
+      {/* Scan QR Section */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Add Peers by Username</Text>
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search username (e.g. parth_tyagi)"
-            placeholderTextColor={Colors.mutedForeground}
-            autoCapitalize="none"
-          />
-          <Pressable style={styles.searchBtn} onPress={handleSearch} disabled={searching}>
-            {searching ? (
-              <ActivityIndicator color={Colors.primaryForeground} />
-            ) : (
-              <Search size={18} color={Colors.primaryForeground} />
-            )}
-          </Pressable>
-        </View>
-
-        {searchStatus === "found" && searchedUser && (
-          <View style={styles.searchResult}>
-            <Text style={styles.resultName}>{searchedUser.name}</Text>
-            <Text style={styles.resultUsername}>@{searchedUser.username}</Text>
-            <Pressable
-              style={styles.addBtn}
-              onPress={() => sendFriendRequest(searchedUser.uid)}
-              disabled={busyUid !== null}
-            >
-              <UserPlus size={16} color={Colors.primaryForeground} style={{ marginRight: 6 }} />
-              <Text style={styles.addBtnText}>Connect</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {searchStatus === "not_found" && (
-          <Text style={styles.notFoundText}>No user found with that username.</Text>
-        )}
+        <Text style={styles.cardTitle}>Scan Connection QR</Text>
+        <Text style={styles.cardDesc}>Connect instantly with others. Scan a friend's QR code to view profile and add connection.</Text>
+        <Pressable style={styles.scanBtn} onPress={openScanModal}>
+          <Share2 size={16} color={Colors.primaryForeground} style={{ marginRight: 6 }} />
+          <Text style={styles.scanBtnText}>Scan QR Code</Text>
+        </Pressable>
       </View>
 
       {/* QR Code Section */}
@@ -222,9 +281,9 @@ export default function NetworkScreen() {
         <Text style={styles.cardTitle}>Your Connect QR</Text>
         <Text style={styles.cardDesc}>Ask a friend to scan this QR code inside their camera or share your connect link.</Text>
         
-        {qrCodeUrl ? (
+        {qrCodeDataUrl ? (
           <View style={styles.qrContainer}>
-            <Image source={{ uri: qrCodeUrl }} style={styles.qrImage} />
+            <Image source={{ uri: qrCodeDataUrl }} style={styles.qrImage} />
             <Pressable style={styles.shareBtn} onPress={copyConnectLink}>
               <ClipboardIcon size={16} color={Colors.foreground} style={{ marginRight: 6 }} />
               <Text style={styles.shareBtnText}>Copy Connection Code</Text>
@@ -235,17 +294,17 @@ export default function NetworkScreen() {
         )}
       </View>
 
-      {/* Incoming Requests */}
+      {/* Incoming Requests List */}
       {incomingProfiles.length > 0 && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Incoming Requests</Text>
+          <Text style={styles.cardTitle}>Incoming Requests ({incomingProfiles.length})</Text>
           {incomingProfiles.map((req) => (
-            <View key={req.uid} style={styles.userRow}>
+            <View key={req.uid} style={styles.friendRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.userName}>{req.name}</Text>
                 <Text style={styles.userHandle}>@{req.username}</Text>
               </View>
-              <View style={styles.actionButtons}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
                 <Pressable
                   style={[styles.miniBtn, { backgroundColor: Colors.success }]}
                   onPress={() => acceptFriendRequest(req.uid)}
@@ -284,6 +343,81 @@ export default function NetworkScreen() {
           ))
         )}
       </View>
+
+      {/* Scan QR Modal */}
+      <Modal visible={showScanModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Scan Connection QR</Text>
+              <Pressable onPress={() => {
+                setShowScanModal(false);
+                setScanInput("");
+                setScannedUser(null);
+                setScanStatus("idle");
+                setScanned(false);
+              }}>
+                <X size={20} color={Colors.foreground} />
+              </Pressable>
+            </View>
+
+            <View style={{ gap: 16, width: "100%", paddingBottom: 20 }}>
+              {permission && permission.granted ? (
+                <View style={styles.cameraContainer}>
+                  <CameraView
+                    style={styles.camera}
+                    onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                    barcodeScannerSettings={{
+                      barcodeTypes: ["qr"],
+                    }}
+                  />
+                  {scanned && (
+                    <Pressable style={styles.rescanBtn} onPress={() => setScanned(false)}>
+                      <Text style={styles.rescanBtnText}>Scan Again</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.noPermissionContainer}>
+                  <Text style={styles.noPermissionText}>Camera permission is required to scan QR codes.</Text>
+                  <Pressable style={styles.permissionBtn} onPress={requestPermission}>
+                    <Text style={styles.permissionBtnText}>Grant Permission</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {searchingScan && (
+                <ActivityIndicator color={Colors.primary} style={{ marginVertical: 10 }} />
+              )}
+
+              {scanStatus === "found" && scannedUser && (
+                <View style={styles.scannedProfileCard}>
+                  <View style={{ alignItems: "center", gap: 6, marginVertical: 10 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "bold", color: Colors.foreground }}>
+                      {scannedUser.name}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "bold" }}>
+                      @{scannedUser.username}
+                    </Text>
+                    {scannedUser.upiId ? (
+                      <Text style={{ fontSize: 11, color: Colors.mutedForeground }}>
+                        UPI: {scannedUser.upiId}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Pressable style={styles.connectBtn} onPress={handleConnectScanned} disabled={busyUid !== null}>
+                    <Text style={styles.connectBtnText}>Connect & Add Friend</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {scanStatus === "not_found" && (
+                <Text style={styles.notFoundText}>Could not resolve a profile for this link.</Text>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -443,5 +577,124 @@ const styles = StyleSheet.create({
     color: Colors.mutedForeground,
     fontSize: Typography.fontSize.sm,
     paddingVertical: 20,
+  },
+  scanBtn: {
+    backgroundColor: Colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 6,
+  },
+  scanBtnText: {
+    color: Colors.primaryForeground,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 20,
+    width: "100%",
+    alignItems: "center",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    paddingBottom: 10,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: "bold",
+    color: Colors.foreground,
+  },
+  scannedProfileCard: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    backgroundColor: Colors.background,
+    padding: 16,
+    width: "100%",
+    alignItems: "center",
+  },
+  connectBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: "100%",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  connectBtnText: {
+    color: Colors.primaryForeground,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+  },
+  cameraContainer: {
+    width: "100%",
+    height: 240,
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 10,
+    position: "relative",
+  },
+  camera: {
+    flex: 1,
+  },
+  rescanBtn: {
+    position: "absolute",
+    bottom: 12,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  rescanBtnText: {
+    color: "#fff",
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+  },
+  noPermissionContainer: {
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    backgroundColor: Colors.border,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  noPermissionText: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.mutedForeground,
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  permissionBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  permissionBtnText: {
+    color: Colors.primaryForeground,
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
   },
 });
