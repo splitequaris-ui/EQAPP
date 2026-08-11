@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Platform, Modal } from "react-native";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Platform, Modal, Image as RNImage, Animated } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { logoutUser } from "../../lib/firebase";
-import { Colors } from "../../constants/colors";
+import { useTheme } from "../../lib/ThemeContext";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
-import { Mail, Phone, AtSign, CreditCard, Pencil, Check, X, LogOut } from "lucide-react-native";
+import { Mail, Phone, AtSign, CreditCard, Pencil, Check, X, LogOut, Sparkles, User, Lock, Image as ImageIcon, Sun, Moon, SunMoon } from "lucide-react-native";
+
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ProfileScreen() {
+  const { colors, preference, setPreference } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+    const insets = useSafeAreaInsets();
   const { user, profile, updateFullProfile } = useApp();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -15,33 +21,50 @@ export default function ProfileScreen() {
   const [nickname, setNickname] = useState("");
   const [phone, setPhone] = useState("");
   const [upiId, setUpiId] = useState("");
+  const [photoURL, setPhotoURL] = useState("");
   const [paymentPref, setPaymentPref] = useState<"cash" | "upi">("upi");
   const [confirmVisible, setConfirmVisible] = useState(false);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(6)).current;
+
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    translateYAnim.setValue(6);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const hydrate = () => {
     const parts = (profile?.name || "").split(" ");
     setFirstName(parts[0] || "");
     setSurname(profile?.surname || parts.slice(1).join(" ") || "");
-    setNickname(profile?.nickname || "");
+    setNickname(profile?.nickname || parts[0] || "");
     setPhone(profile?.phone || "");
     setUpiId(profile?.upiId || "");
     setPaymentPref(profile?.paymentPreference || "upi");
+    setPhotoURL(profile?.photoURL || user?.photoURL || "");
   };
 
   useEffect(() => {
     hydrate();
-  }, [profile]);
+  }, [profile, user]);
 
   const handleSave = async () => {
     const fn = firstName.trim();
     const sn = surname.trim();
     if (!fn) {
       Alert.alert("Error", "First name cannot be empty.");
-      return;
-    }
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phone.trim() && phoneDigits.length < 7) {
-      Alert.alert("Error", "Please enter a valid phone number.");
       return;
     }
 
@@ -53,6 +76,7 @@ export default function ProfileScreen() {
         nickname: nickname.trim() || fn,
         phone: phone.trim(),
         upiId: upiId.trim(),
+        photoURL: photoURL.trim(),
         paymentPreference: paymentPref,
       });
       setEditing(false);
@@ -65,121 +89,264 @@ export default function ProfileScreen() {
     }
   };
 
+  const displayName = nickname.trim() || profile?.nickname || profile?.name || "User";
+  const avatarUri = photoURL.trim() || profile?.photoURL || user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=3e8e7e&color=fff&size=200&bold=true`;
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.username}>@{profile?.username || "username"}</Text>
+    <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: translateYAnim }] }}>
+      <ScrollView contentContainerStyle={styles.container}>
+      {/* 1. Top Profile Hero Card (Screenshot #1) */}
+      <View style={styles.heroCard}>
+        <Pressable onPress={() => setEditing(true)} style={styles.avatarContainer}>
+          <RNImage source={{ uri: avatarUri }} style={styles.heroAvatarImg} />
+        </Pressable>
+
+        <Text style={styles.heroNickname}>{displayName}</Text>
+        <Text style={styles.heroUsername}>@{profile?.username || "username"}</Text>
+
+        <View style={styles.callsYouPill}>
+          <Sparkles size={14} color={colors.foreground} />
+          <Text style={styles.callsYouText}>The app calls you "{displayName}"</Text>
+        </View>
+      </View>
+
+      {/* 2. Personal Details Card (Screenshots #1 & #2) */}
+      <View style={styles.detailsCard}>
+        <View style={styles.detailsHeaderRow}>
+          <Text style={styles.detailsCardTitle}>Personal Details</Text>
+          
           {!editing ? (
-            <Pressable style={styles.editBtn} onPress={() => setEditing(true)}>
-              <Pencil size={16} color={Colors.primary} />
+            <Pressable style={styles.editPillBtn} onPress={() => setEditing(true)}>
+              <Pencil size={14} color={colors.foreground} />
+              <Text style={styles.editPillText}>Edit</Text>
             </Pressable>
           ) : (
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable style={styles.miniBtn} onPress={hydrate}>
-                <X size={16} color={Colors.destructive} />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable style={styles.cancelPillBtn} onPress={hydrate}>
+                <X size={14} color={colors.destructive} />
+                <Text style={styles.cancelPillText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.miniBtn} onPress={handleSave}>
+              <Pressable style={styles.savePillBtn} onPress={handleSave}>
                 {saving ? (
-                  <ActivityIndicator size="small" color={Colors.success} />
+                  <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <Check size={16} color={Colors.success} />
+                  <>
+                    <Check size={14} color="#ffffff" />
+                    <Text style={styles.savePillText}>Save</Text>
+                  </>
                 )}
               </Pressable>
             </View>
           )}
         </View>
 
-        <View style={styles.infoSection}>
-          <View style={styles.infoRow}>
-            <Mail size={16} color={Colors.mutedForeground} />
-            <Text style={styles.infoText}>{user?.email}</Text>
-          </View>
-
-          {editing ? (
-            <View style={styles.editForm}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>First Name</Text>
+        <View style={styles.detailsList}>
+          {/* NICKNAME */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <Sparkles size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>NICKNAME</Text>
+              {editing ? (
                 <TextInput
-                  style={[styles.input, { opacity: 0.6 }]}
-                  value={firstName}
-                  editable={false}
-                  placeholder="First Name"
-                  placeholderTextColor={Colors.mutedForeground}
-                />
-              </View>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Surname</Text>
-                <TextInput
-                  style={[styles.input, { opacity: 0.6 }]}
-                  value={surname}
-                  editable={false}
-                  placeholder="Surname"
-                  placeholderTextColor={Colors.mutedForeground}
-                />
-              </View>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Nickname</Text>
-                <TextInput
-                  style={[styles.input, { opacity: 0.6 }]}
+                  style={styles.detailInput}
                   value={nickname}
-                  editable={false}
+                  onChangeText={setNickname}
                   placeholder="Nickname"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                 />
-              </View>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Phone</Text>
+              ) : (
+                <Text style={styles.detailBoldValue}>{profile?.nickname || displayName}</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* FULL NAME */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <User size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>FULL NAME</Text>
+              {editing ? (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TextInput
+                    style={[styles.detailInput, { flex: 1 }]}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First Name"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <TextInput
+                    style={[styles.detailInput, { flex: 1 }]}
+                    value={surname}
+                    onChangeText={setSurname}
+                    placeholder="Surname"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+              ) : (
+                <Text style={styles.detailBoldValue}>{profile?.name || "Not set"}</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* EMAIL */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <Mail size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>EMAIL</Text>
+              <Text style={styles.detailBoldValue}>{user?.email || profile?.email || "Not set"}</Text>
+            </View>
+            <Lock size={16} color={colors.mutedForeground} />
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* PHONE */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <Phone size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>PHONE</Text>
+              {editing ? (
                 <TextInput
-                  style={[styles.input, { opacity: 0.6 }]}
+                  style={styles.detailInput}
                   value={phone}
-                  editable={false}
+                  onChangeText={setPhone}
                   placeholder="Phone number"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                   keyboardType="phone-pad"
                 />
-              </View>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>UPI ID - Optional</Text>
+              ) : (
+                <Text style={styles.detailBoldValue}>{profile?.phone || "7703801301"}</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* USERNAME */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <AtSign size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>USERNAME</Text>
+              <Text style={styles.detailBoldValue}>@{profile?.username || "username"}</Text>
+            </View>
+            <Lock size={16} color={colors.mutedForeground} />
+          </View>
+          <View style={styles.detailDivider} />
+
+          {/* UPI ID */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <CreditCard size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>UPI ID</Text>
+              {editing ? (
                 <TextInput
-                  style={styles.input}
+                  style={styles.detailInput}
                   value={upiId}
                   onChangeText={setUpiId}
                   placeholder="UPI ID"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="none"
                 />
-              </View>
+              ) : (
+                <Text style={styles.detailBoldValue}>{profile?.upiId || "Not set"}</Text>
+              )}
             </View>
-          ) : (
-            <View style={styles.profileDetails}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Full Name</Text>
-                <Text style={styles.detailValue}>{profile?.name}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Nickname</Text>
-                <Text style={styles.detailValue}>{profile?.nickname || "Not set"}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Phone</Text>
-                <Text style={styles.detailValue}>{profile?.phone || "Not set"}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>UPI ID</Text>
-                <Text style={styles.detailValue}>{profile?.upiId || "Not set"}</Text>
-              </View>
-            </View>
-          )}
-        </View>
+          </View>
+          <View style={styles.detailDivider} />
 
-        <Pressable
-          style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.9 }]}
-          onPress={() => setConfirmVisible(true)}
-        >
-          <LogOut size={16} color={Colors.primaryForeground} style={{ marginRight: 6 }} />
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </Pressable>
+          {/* PREFERRED PAYMENT */}
+          <View style={styles.detailRowItem}>
+            <View style={styles.detailIconBubble}>
+              <CreditCard size={18} color={colors.foreground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailMonoLabel}>PREFERRED PAYMENT</Text>
+              <Text style={styles.detailBoldValue}>{paymentPref.toUpperCase()}</Text>
+            </View>
+          </View>
+
+          {/* PHOTO URL (when editing) */}
+          {editing ? (
+            <>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRowItem}>
+                <View style={styles.detailIconBubble}>
+                  <ImageIcon size={18} color={colors.foreground} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.detailMonoLabel}>PROFILE PHOTO URL</Text>
+                  <TextInput
+                    style={styles.detailInput}
+                    value={photoURL}
+                    onChangeText={setPhotoURL}
+                    placeholder="https://example.com/photo.jpg"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Appearance / Theme Section */}
+      <View style={{ marginBottom: 16, paddingHorizontal: 0 }}>
+        <Text style={[styles.detailMonoLabel, { marginBottom: 12 }]}>APPEARANCE</Text>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {([
+            { key: "light", label: "Light", Icon: Sun },
+            { key: "dark",  label: "Dark",  Icon: Moon },
+            { key: "system", label: "System", Icon: SunMoon },
+          ] as const).map(({ key, label, Icon }) => {
+            const active = preference === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setPreference(key)}
+                style={[{
+                  flex: 1,
+                  flexDirection: "column",
+                  alignItems: "center",
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  gap: 6,
+                  borderColor: active ? colors.primary : colors.border,
+                  backgroundColor: active ? colors.primary : colors.card,
+                }]}
+              >
+                <Icon size={18} color={active ? colors.primaryForeground : colors.mutedForeground} />
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: "700",
+                  color: active ? colors.primaryForeground : colors.mutedForeground,
+                }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.9 }]}
+        onPress={() => setConfirmVisible(true)}
+      >
+        <LogOut size={16} color={colors.primaryForeground} style={{ marginRight: 6 }} />
+        <Text style={styles.logoutText}>Sign Out</Text>
+      </Pressable>
 
         {/* Custom Confirmation Modal */}
         <Modal
@@ -197,10 +364,10 @@ export default function ProfileScreen() {
             <View style={{
               width: "90%",
               maxWidth: 340,
-              backgroundColor: "#F4EFE6",
+              backgroundColor: colors.card,
               borderRadius: 28,
               borderWidth: 1,
-              borderColor: "#E8E2D5",
+              borderColor: colors.border,
               padding: 28,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 10 },
@@ -211,14 +378,14 @@ export default function ProfileScreen() {
               <Text style={{
                 fontSize: 20,
                 fontWeight: "900",
-                color: "#2B2927",
+                color: colors.foreground,
                 marginBottom: 12,
                 textTransform: "uppercase",
                 letterSpacing: -0.5
               }}>Sign Out?</Text>
               <Text style={{
                 fontSize: 14,
-                color: "#5C5955",
+                color: colors.mutedForeground,
                 lineHeight: 20,
                 marginBottom: 24
               }}>Are you sure you want to sign out? You will need to log back in to access your ledger.</Text>
@@ -234,7 +401,7 @@ export default function ProfileScreen() {
                     height: 44,
                     borderRadius: 22,
                     borderWidth: 1,
-                    borderColor: "#C5BFA5",
+                    borderColor: colors.border,
                     justifyContent: "center",
                     alignItems: "center"
                   }}
@@ -242,7 +409,7 @@ export default function ProfileScreen() {
                   <Text style={{
                     fontSize: 12,
                     fontWeight: "900",
-                    color: "#5C5955",
+                    color: colors.mutedForeground,
                     textTransform: "uppercase",
                     letterSpacing: 0.5
                   }}>Cancel</Text>
@@ -278,122 +445,211 @@ export default function ProfileScreen() {
             </View>
           </View>
         </Modal>
-      </View>
     </ScrollView>
+  </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     padding: 20,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     flexGrow: 1,
+    paddingTop: 45,
   },
-  card: {
-    backgroundColor: Colors.card,
-    borderRadius: 20,
+  heroCard: {
+    backgroundColor: colors.glassCard,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 20,
+    borderColor: colors.glassBorder,
+    padding: 24,
+    alignItems: "center",
+    marginBottom: 16,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  headerRow: {
+  avatarContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    overflow: "hidden",
+    backgroundColor: colors.secondary,
+    marginBottom: 14,
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  heroAvatarImg: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  heroNickname: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: colors.foreground,
+    letterSpacing: -0.5,
+  },
+  heroUsername: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  callsYouPill: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  callsYouText: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.foreground,
+    fontWeight: "500",
+  },
+  detailsCard: {
+    backgroundColor: colors.glassCard,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  detailsHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    paddingBottom: 12,
-  },
-  username: {
-    fontSize: Typography.fontSize.base,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-  },
-  editBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.background,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  miniBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.background,
-  },
-  infoSection: {
-    marginBottom: 24,
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     marginBottom: 16,
   },
-  infoText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.mutedForeground,
+  detailsCardTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: "900",
+    color: colors.foreground,
   },
-  profileDetails: {
-    gap: 12,
-  },
-  detailRow: {
+  editPillBtn: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    paddingBottom: 8,
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: colors.background,
   },
-  detailLabel: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-  },
-  detailValue: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
-  },
-  editForm: {
-    gap: 12,
-  },
-  inputContainer: {
-    gap: 4,
-  },
-  label: {
+  editPillText: {
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
-    color: Colors.mutedForeground,
+    color: colors.foreground,
+    fontFamily: Typography.fontFamily.mono,
   },
-  input: {
-    height: 40,
+  cancelPillBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.background,
+  },
+  cancelPillText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    color: colors.destructive,
+    fontFamily: Typography.fontFamily.mono,
+  },
+  savePillBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: colors.primary,
+  },
+  savePillText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    color: colors.primaryForeground,
+    fontFamily: Typography.fontFamily.mono,
+  },
+  detailsList: {
+    gap: 10,
+  },
+  detailRowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 4,
+  },
+  detailIconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  detailMonoLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  detailBoldValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.foreground,
+    marginTop: 2,
+  },
+  detailInput: {
+    height: 38,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
+    color: colors.foreground,
+    backgroundColor: colors.background,
+    marginTop: 2,
+    width: "100%",
+  },
+  detailDivider: {
+    height: 1,
+    backgroundColor: colors.border,
   },
   logoutBtn: {
-    backgroundColor: Colors.primary,
-    height: 44,
-    borderRadius: 10,
+    backgroundColor: colors.destructive,
+    height: 48,
+    borderRadius: 14,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 20,
   },
   logoutText: {
-    color: Colors.primaryForeground,
+    color: "#ffffff",
     fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.bold,
   },
-});
+}); }

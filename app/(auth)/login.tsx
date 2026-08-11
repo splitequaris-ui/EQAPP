@@ -2,12 +2,17 @@ import React, { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Platform, Alert } from "react-native";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "../../lib/firebase";
-import { Colors } from "../../constants/colors";
+import { useTheme } from "../../lib/ThemeContext";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { useApp } from "../../lib/AppContext";
-import { AlertCircle, Lock, Mail, User, Sparkles, ChevronLeft } from "lucide-react-native";
+import { AlertCircle, Lock, Mail, User, ChevronLeft } from "lucide-react-native";
+import GoogleLogo from "../../components/GoogleLogo";
+import EquarisWalletLogo from "../../components/EquarisWalletLogo";
 
 export default function LoginScreen() {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { navigate } = useApp();
   const [stage, setStage] = useState<"welcome" | "auth">("welcome");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -58,7 +63,7 @@ export default function LoginScreen() {
     if (!email.trim()) return setAuthError("Email is required.");
     if (!password.trim()) return setAuthError("Password is required.");
     if (mode === "signup" && !username.trim()) return setAuthError("Your name is required.");
-    
+
     if (mode === "signup") {
       if (password.length < 8) {
         return setAuthError("Password must be at least 8 characters long.");
@@ -100,11 +105,7 @@ export default function LoginScreen() {
     return (
       <View style={styles.welcomeContainer}>
         <View style={styles.welcomeHeader}>
-          <Image
-            source={require("../../src/assets/welcome-logo-trans.png")}
-            style={styles.welcomeLogo}
-            resizeMode="contain"
-          />
+          <EquarisWalletLogo size={54} />
         </View>
 
         <View style={styles.illustrationContainer}>
@@ -123,15 +124,18 @@ export default function LoginScreen() {
               style={({ pressed }) => [
                 styles.welcomeBtn,
                 pressed && { opacity: 0.9 },
-                authLoading && { backgroundColor: Colors.muted }
+                authLoading && { backgroundColor: colors.muted }
               ]}
               onPress={handleGoogleSignIn}
               disabled={authLoading}
             >
               {authLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={colors.primaryForeground} />
               ) : (
-                <Text style={styles.welcomeBtnText}>Continue with Google</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+                  <GoogleLogo size={22} />
+                  <Text style={[styles.welcomeBtnText, { marginLeft: 10 }]}>Continue with Google</Text>
+                </View>
               )}
             </Pressable>
 
@@ -144,7 +148,6 @@ export default function LoginScreen() {
             >
               <View style={styles.signUpBtnContent}>
                 <Text style={styles.welcomeBtnText}>Sign Up</Text>
-                <Sparkles size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
               </View>
             </Pressable>
           </View>
@@ -168,7 +171,7 @@ export default function LoginScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Pressable style={styles.backBtn} onPress={() => setStage("welcome")}>
-        <ChevronLeft size={20} color={Colors.foreground} />
+        <ChevronLeft size={20} color={colors.foreground} />
         <Text style={styles.backBtnText}>Back</Text>
       </Pressable>
 
@@ -187,7 +190,7 @@ export default function LoginScreen() {
 
         {authError && (
           <View style={styles.errorAlert}>
-            <AlertCircle size={16} color={Colors.destructive} style={{ marginRight: 6 }} />
+            <AlertCircle size={16} color={colors.destructive} style={{ marginRight: 6 }} />
             <Text style={styles.errorText}>{authError}</Text>
           </View>
         )}
@@ -197,13 +200,13 @@ export default function LoginScreen() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Name</Text>
               <View style={styles.inputWrapper}>
-                <User size={18} color={Colors.mutedForeground} style={styles.inputIcon} />
+                <User size={18} color={colors.mutedForeground} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   value={username}
                   onChangeText={setUsername}
                   placeholder="Your name"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="words"
                 />
               </View>
@@ -213,13 +216,13 @@ export default function LoginScreen() {
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
             <View style={styles.inputWrapper}>
-              <Mail size={18} color={Colors.mutedForeground} style={styles.inputIcon} />
+              <Mail size={18} color={colors.mutedForeground} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
                 keyboardType="email-address"
               />
@@ -229,13 +232,13 @@ export default function LoginScreen() {
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Password</Text>
             <View style={styles.inputWrapper}>
-              <Lock size={18} color={Colors.mutedForeground} style={styles.inputIcon} />
+              <Lock size={18} color={colors.mutedForeground} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
                 secureTextEntry
                 autoCapitalize="none"
               />
@@ -251,13 +254,13 @@ export default function LoginScreen() {
             style={({ pressed }) => [
               styles.button,
               pressed && { opacity: 0.9 },
-              authLoading && { backgroundColor: Colors.muted }
+              authLoading && { backgroundColor: colors.muted }
             ]}
             onPress={handleEmailAuth}
             disabled={authLoading}
           >
             {authLoading ? (
-              <ActivityIndicator color={Colors.primaryForeground} />
+              <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={styles.buttonText}>
                 {mode === "signin" ? "Sign In" : "Create Account"}
@@ -286,215 +289,220 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: Colors.background,
-    justifyContent: "center",
-    padding: 20,
-  },
-  card: {
-    backgroundColor: Colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  logoText: {
-    fontFamily: Typography.fontFamily.sans,
-    fontSize: Typography.fontSize.xxl,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.primary,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: Typography.fontSize.xl,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.mutedForeground,
-    textAlign: "center",
-    paddingHorizontal: 10,
-  },
-  errorAlert: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fdf2f2",
-    borderColor: "#fde8e8",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: Typography.fontSize.xs,
-    color: Colors.destructive,
-    fontWeight: Typography.fontWeight.medium,
-  },
-  form: {
-    gap: 16,
-  },
-  inputContainer: {
-    gap: 6,
-  },
-  label: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.medium,
-    color: Colors.foreground,
-  },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    backgroundColor: Colors.background,
-    paddingHorizontal: 12,
-    height: 48,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: "100%",
-    color: Colors.foreground,
-    fontSize: Typography.fontSize.base,
-  },
-  passwordHint: {
-    fontSize: 10,
-    color: Colors.mutedForeground,
-    marginTop: 2,
-    lineHeight: 12,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 10,
-  },
-  buttonText: {
-    color: Colors.primaryForeground,
-    fontSize: Typography.fontSize.base,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 24,
-  },
-  footerText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.mutedForeground,
-  },
-  footerLink: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.primary,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  welcomeContainer: {
-    flex: 1,
-    backgroundColor: "#e4dbcf",
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  welcomeHeader: {
-    width: "100%",
-    alignItems: "center",
-    paddingTop: 10,
-    marginBottom: 5,
-  },
-  welcomeLogo: {
-    width: 70,
-    height: 70,
-  },
-  illustrationContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-    marginVertical: 10,
-  },
-  welcomeIllustration: {
-    width: "85%",
-    height: undefined,
-    aspectRatio: 494 / 545,
-    maxHeight: 280,
-  },
-  welcomeContent: {
-    width: "100%",
-    alignItems: "center",
-    paddingBottom: 15,
-  },
-  welcomeTitle: {
-    fontSize: Typography.fontSize.xxl,
-    fontWeight: "bold",
-    color: "#3D1B24",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  welcomeButtonGroup: {
-    width: "100%",
-    gap: 12,
-    marginBottom: 16,
-  },
-  welcomeBtn: {
-    backgroundColor: "#3D1F25",
-    height: 48,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  welcomeBtnText: {
-    color: "#FFFFFF",
-    fontSize: Typography.fontSize.base,
-    fontWeight: "bold",
-  },
-  signUpBtnContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  welcomeLoginLink: {
-    paddingVertical: 6,
-  },
-  welcomeLoginText: {
-    fontSize: Typography.fontSize.sm,
-    color: "#5E5649",
-  },
-  welcomeLoginHighlight: {
-    color: "#3D1F25",
-    fontWeight: "bold",
-  },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    alignSelf: "flex-start",
-  },
-  backBtnText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    marginLeft: 4,
-    fontWeight: "bold",
-  },
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      flexGrow: 1,
+      backgroundColor: colors.background,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    },
+    card: {
+      width: "100%",
+      maxWidth: 420,
+      backgroundColor: colors.card,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 24,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    header: {
+      alignItems: "center",
+      marginBottom: 24,
+    },
+    logoText: {
+      fontFamily: Typography.fontFamily.sans,
+      fontSize: Typography.fontSize.xxl,
+      fontWeight: Typography.fontWeight.bold,
+      color: colors.primary,
+      marginBottom: 8,
+    },
+    title: {
+      fontSize: Typography.fontSize.xl,
+      fontWeight: Typography.fontWeight.semibold,
+      color: colors.foreground,
+      textAlign: "center",
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      paddingHorizontal: 10,
+    },
+    errorAlert: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.destructive + "15",
+      borderColor: colors.destructive + "30",
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 20,
+    },
+    errorText: {
+      flex: 1,
+      fontSize: Typography.fontSize.xs,
+      color: colors.destructive,
+      fontWeight: Typography.fontWeight.medium,
+    },
+    form: {
+      gap: 16,
+    },
+    inputContainer: {
+      gap: 6,
+    },
+    label: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.medium,
+      color: colors.foreground,
+    },
+    inputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.background,
+      paddingHorizontal: 12,
+      height: 48,
+    },
+    inputIcon: {
+      marginRight: 8,
+    },
+    input: {
+      flex: 1,
+      height: "100%",
+      color: colors.foreground,
+      fontSize: Typography.fontSize.base,
+    },
+    passwordHint: {
+      fontSize: 10,
+      color: colors.mutedForeground,
+      marginTop: 2,
+      lineHeight: 12,
+    },
+    button: {
+      backgroundColor: colors.primary,
+      height: 48,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: 10,
+    },
+    buttonText: {
+      color: colors.primaryForeground,
+      fontSize: Typography.fontSize.base,
+      fontWeight: Typography.fontWeight.semibold,
+    },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: 24,
+    },
+    footerText: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.mutedForeground,
+    },
+    footerLink: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.primary,
+      fontWeight: Typography.fontWeight.semibold,
+    },
+    welcomeContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+      paddingHorizontal: 24,
+      paddingVertical: 20,
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    welcomeHeader: {
+      width: "100%",
+      alignItems: "center",
+      paddingTop: 10,
+      marginBottom: 5,
+    },
+    welcomeLogo: {
+      width: 70,
+      height: 70,
+    },
+    illustrationContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      width: "100%",
+      marginVertical: 10,
+    },
+    welcomeIllustration: {
+      width: "85%",
+      height: undefined,
+      aspectRatio: 494 / 545,
+      maxHeight: 280,
+    },
+    welcomeContent: {
+      width: "100%",
+      alignItems: "center",
+      paddingBottom: 15,
+    },
+    welcomeTitle: {
+      fontSize: Typography.fontSize.xxl,
+      fontWeight: "bold",
+      color: colors.primary,
+      marginBottom: 16,
+      textAlign: "center",
+    },
+    welcomeButtonGroup: {
+      width: "100%",
+      gap: 12,
+      marginBottom: 16,
+    },
+    welcomeBtn: {
+      backgroundColor: colors.primary,
+      height: 48,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    welcomeBtnText: {
+      color: colors.primaryForeground,
+      fontSize: Typography.fontSize.base,
+      fontWeight: "bold",
+    },
+    signUpBtnContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    welcomeLoginLink: {
+      paddingVertical: 6,
+    },
+    welcomeLoginText: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.mutedForeground,
+    },
+    welcomeLoginHighlight: {
+      color: colors.primary,
+      fontWeight: "bold",
+    },
+    backBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 20,
+      alignSelf: "flex-start",
+    },
+    backBtnText: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.foreground,
+      marginLeft: 4,
+      fontWeight: "bold",
+    },
+  });
+}

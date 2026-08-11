@@ -111,7 +111,7 @@ export async function dbGetDocsInBatches(collectionPath: string, field: string, 
           return { id: docSnap.id, ...docSnap.data() };
         }
       } catch (err) {
-        console.error(`Error fetching individual doc ${collectionPath}/${id}:`, err);
+        console.warn(`Error fetching individual doc ${collectionPath}/${id}:`, err);
       }
       return null;
     });

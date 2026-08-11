@@ -1,26 +1,28 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, TextInput, Modal, Alert } from "react-native";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, TextInput, Modal, Alert, Animated, KeyboardAvoidingView, Platform } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { calculateBalances } from "../../lib/settleEngine";
-import { Colors } from "../../constants/colors";
+import { useTheme } from "../../lib/ThemeContext";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { fetchInsights } from "../../lib/api";
 import { db } from "../../lib/firebase";
 import { dbGetDoc, dbSetDoc } from "../../lib/firestoreQuery";
 import { query, collection, where, getDocs } from "firebase/firestore";
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Lightbulb, 
-  AlertTriangle, 
-  Wallet, 
-  Palmtree, 
-  Plus, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Lightbulb,
+  AlertTriangle,
+  Wallet,
+  Palmtree,
+  Plus,
   RefreshCw,
   Users,
   PieChart,
   MoreVertical,
-  X
+  X,
+  Sparkles
 } from "lucide-react-native";
 
 const INSIGHT_ICON: Record<string, React.ElementType> = {
@@ -31,9 +33,31 @@ const INSIGHT_ICON: Record<string, React.ElementType> = {
 };
 
 export default function DashboardScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user, profile, groups, allExpenses, navigate } = useApp();
   const [aiInsights, setAiInsights] = useState<{ type: string; title: string; message: string }[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(6)).current;
+
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    translateYAnim.setValue(6);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Quick Add Expense States
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
@@ -43,6 +67,7 @@ export default function DashboardScreen() {
   const [whoPaid, setWhoPaid] = useState<"me" | "friend">("me");
   const [splitOption, setSplitOption] = useState<"equal" | "lend" | "borrow">("equal");
   const [loggingSplit, setLoggingSplit] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
 
   const handleLogQuickSplit = async () => {
     if (!user || !profile) return;
@@ -262,652 +287,820 @@ export default function DashboardScreen() {
   const netBalance = youAreOwed - youOwe;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Editorial Overview Section */}
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-        <View style={[styles.header, { marginBottom: 0 }]}>
-          <Text style={styles.overviewLabel}>OVERVIEW</Text>
-          <Text style={styles.nameText}>Hi, {profile?.nickname || profile?.name || "User"}</Text>
-          <Text style={styles.descriptionText}>
-            Track clearly, split fairly, and settle up in seconds. No awkward reminders — only good times.
-          </Text>
-        </View>
-        <Pressable 
-          style={styles.threeDotsBtn} 
-          onPress={() => {
-            Alert.alert("Menu", "", [
-              { text: "Settle", onPress: () => navigate("/network") },
-              { text: "Cancel", style: "cancel" }
-            ]);
-          }}
-        >
-          <MoreVertical size={20} color={Colors.foreground} />
-        </Pressable>
-      </View>
-
-      {/* Editorial Header Quick Action Buttons */}
-      <View style={styles.webActionsRow}>
-        <Pressable 
-          style={[styles.webActionBtn, { backgroundColor: Colors.primary }]} 
-          onPress={() => setShowQuickAddModal(true)}
-        >
-          <Plus size={16} color={Colors.primaryForeground} style={{ marginRight: 4 }} />
-          <Text style={[styles.webActionText, { color: Colors.primaryForeground }]}>Add Expense</Text>
-        </Pressable>
-        <Pressable 
-          style={[styles.webActionBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: Colors.primary }]} 
-          onPress={() => navigate("/network")}
-        >
-          <Users size={16} color={Colors.primary} style={{ marginRight: 4 }} />
-          <Text style={[styles.webActionText, { color: Colors.primary }]}>Manage network</Text>
-        </Pressable>
-      </View>
-
-      {/* Premium Dashboard Metrics Cards */}
-      <View style={styles.metricsGrid}>
-        {/* Metric 1: Total Group Spend */}
-        <View style={styles.metricCard}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text style={styles.metricLabel}>TOTAL GROUP SPEND</Text>
-            <Text style={{ fontSize: 14, color: Colors.foreground }}>₹</Text>
+    <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: translateYAnim }] }}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Editorial Overview Section */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <View style={[styles.header, { marginBottom: 0 }]}>
+            <Text style={styles.overviewLabel}>OVERVIEW</Text>
+            <Text style={styles.nameText}>Hi, {profile?.nickname || profile?.name || "User"}</Text>
+            <Text style={styles.descriptionText}>
+              Track clearly, split fairly, and settle up in seconds. No awkward reminders — only good times.
+            </Text>
           </View>
-          <Text style={styles.metricAmount}>₹{totalSpent.toLocaleString("en-IN")}</Text>
-          <Text style={styles.metricSubtitle}>BUDGET HEALTH</Text>
-          <View style={[styles.progressBarBg, { marginTop: 6, height: 4 }]}>
-            <View 
-              style={[
-                styles.progressBarFill, 
-                { 
-                  width: `${Math.min(100, totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0)}%`,
-                  backgroundColor: totalSpent > totalBudget && totalBudget > 0 ? Colors.destructive : Colors.success
-                }
-              ]} 
-            />
-          </View>
+          <Pressable
+            style={styles.threeDotsBtn}
+            onPress={() => {
+              setShowMenuModal(true);
+            }}
+          >
+            <MoreVertical size={20} color={colors.foreground} />
+          </Pressable>
         </View>
 
-        {/* Metric 2: You Owe */}
-        <View style={styles.metricCard}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text style={styles.metricLabel}>YOU OWE</Text>
-            <TrendingDown size={14} color={Colors.destructive} />
-          </View>
-          <Text style={[styles.metricAmount, { color: Colors.destructive }]}>₹{youOwe.toLocaleString("en-IN")}</Text>
-          <Text style={styles.metricSubtitle}>Total outstanding bills</Text>
+        {/* Editorial Header Quick Action Buttons */}
+        <View style={styles.webActionsRow}>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.webActionBtn,
+              { backgroundColor: colors.primary },
+              hovered && styles.btnHovered,
+              pressed && styles.cardPressed,
+            ]}
+            onPress={() => setShowQuickAddModal(true)}
+          >
+            <Plus size={16} color={colors.primaryForeground} style={{ marginRight: 4 }} />
+            <Text style={[styles.webActionText, { color: colors.primaryForeground }]}>Add Expense</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.webActionBtn,
+              { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.primary },
+              hovered && styles.btnHovered,
+              pressed && styles.cardPressed,
+            ]}
+            onPress={() => navigate("/network")}
+          >
+            <Users size={16} color={colors.primary} style={{ marginRight: 4 }} />
+            <Text style={[styles.webActionText, { color: colors.primary }]}>Manage network</Text>
+          </Pressable>
         </View>
 
-        {/* Metric 3: You Are Owed */}
-        <View style={styles.metricCard}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text style={styles.metricLabel}>YOU ARE OWED</Text>
-            <TrendingUp size={14} color={Colors.success} />
-          </View>
-          <Text style={[styles.metricAmount, { color: Colors.success }]}>₹{youAreOwed.toLocaleString("en-IN")}</Text>
-          <Text style={styles.metricSubtitle}>Reimbursement suggestions</Text>
-        </View>
-      </View>
-
-      {/* Active Group Spend & Limits Card */}
-      <Text style={styles.sectionTitle}>Active Group Spend & Limits</Text>
-      <Text style={styles.sectionSubtitle}>Real-time status of your active group budget limits.</Text>
-      
-      {groups.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No active group pools. Create one under Groups tab!</Text>
-        </View>
-      ) : (
-        groups.map((g) => {
-          const groupExpenses = spendExpenses.filter((e) => e.groupId === g.id);
-          const groupSpent = groupExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-          const budgetLimit = g.budget || 50000; // fallback limit
-          const pct = Math.round((groupSpent / budgetLimit) * 100);
-          return (
-            <Pressable 
-              key={g.id} 
-              style={styles.groupPoolCard}
-              onPress={() => navigate("/groups/[id]", { id: g.id })}
-            >
-              <Text style={styles.poolTag}>GROUP POOL</Text>
-              <Text style={styles.poolName}>{g.name}</Text>
-              
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12, marginBottom: 4 }}>
-                <Text style={styles.poolMetaText}>SPENT: ₹{groupSpent.toLocaleString("en-IN")}</Text>
-                <Text style={styles.poolMetaText}>LIMIT: ₹{budgetLimit.toLocaleString("en-IN")}</Text>
-              </View>
-              
-              <View style={[styles.progressBarBg, { height: 6, marginBottom: 12 }]}>
-                <View 
-                  style={[
-                    styles.progressBarFill, 
-                    { 
-                      width: `${Math.min(100, pct)}%`,
-                      backgroundColor: groupSpent > budgetLimit ? Colors.destructive : Colors.success
-                    }
-                  ]} 
-                />
-              </View>
-              
-              <View style={{ borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={styles.poolLinkText}>View Group Details</Text>
-                <TrendingUp size={14} color={Colors.mutedForeground} />
-              </View>
-            </Pressable>
-          );
-        })
-      )}
-
-      {/* AI Insights Section */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>AI Insights</Text>
-        <Pressable onPress={loadInsights} disabled={loadingInsights}>
-          {loadingInsights ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <RefreshCw size={14} color={Colors.mutedForeground} />
-          )}
-        </Pressable>
-      </View>
-
-      <View style={styles.insightsCard}>
-        {aiInsights.map((insight, idx) => {
-          const Icon = INSIGHT_ICON[insight.type] || Lightbulb;
-          return (
-            <View key={idx} style={[styles.insightRow, idx > 0 && styles.insightBorder]}>
-              <View style={[styles.insightIconBg, { backgroundColor: insight.type === "warning" ? "#fdf2f2" : "#f0fdf4" }]}>
-                <Icon size={14} color={insight.type === "warning" ? Colors.destructive : Colors.success} />
-              </View>
-              <View style={styles.insightContent}>
-                <Text style={styles.insightTitle}>{insight.title}</Text>
-                <Text style={styles.insightMessage}>{insight.message}</Text>
+        {/* Premium Dashboard Metrics Cards with Motion */}
+        <View style={styles.metricsGrid}>
+          {/* Metric 1: Total Group Spend */}
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.metricCard,
+              hovered && styles.cardHovered,
+              pressed && styles.cardPressed,
+            ]}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <Text style={styles.metricLabel}>TOTAL GROUP SPEND</Text>
+              <View style={styles.miniIconBubble}>
+                <Text style={{ fontSize: 13, fontWeight: "bold", color: colors.foreground }}>₹</Text>
               </View>
             </View>
-          );
-        })}
-      </View>
+            <Text
+              style={styles.metricAmount}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.6}
+            >
+              ₹{totalSpent.toLocaleString("en-IN")}
+            </Text>
+            <Text style={styles.metricSubtitle}>BUDGET HEALTH</Text>
+            <View style={[styles.progressBarBg, { marginTop: 6, height: 6, borderRadius: 3 }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${Math.min(100, totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0)}%`,
+                    backgroundColor: totalSpent > totalBudget && totalBudget > 0 ? colors.destructive : colors.success
+                  }
+                ]}
+              />
+            </View>
+          </Pressable>
 
-      {/* Recent Splits List */}
-      <Text style={styles.sectionTitle}>Recent Splits</Text>
-      <View style={styles.listCard}>
-        {recentExpenses.length === 0 ? (
-          <Text style={styles.emptyText}>No recent split transactions.</Text>
-        ) : (
-          recentExpenses.map((item, index) => {
-            const groupName = groups.find((g) => g.id === item.groupId)?.name || "Group";
-            return (
-              <View key={item.id} style={[styles.expenseItem, index > 0 && styles.insightBorder]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.expenseTitle}>{item.title}</Text>
-                  <Text style={styles.expenseMeta}>{groupName} • {item.date}</Text>
+          {/* 2-Column Row for YOU OWE and YOU ARE OWED */}
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            {/* Metric 2: You Owe */}
+            <Pressable
+              style={({ pressed, hovered }: any) => [
+                styles.metricCard,
+                { flex: 1 },
+                hovered && styles.cardHovered,
+                pressed && styles.cardPressed,
+              ]}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <Text style={styles.metricLabel} numberOfLines={1}>YOU OWE</Text>
+                <View style={[styles.miniIconBubble, { backgroundColor: "#fef2f2" }]}>
+                  <TrendingDown size={14} color={colors.destructive} />
                 </View>
-                <Text style={styles.expenseAmount}>₹{item.amount}</Text>
               </View>
+              <Text
+                style={[styles.metricAmount, { color: colors.destructive }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit={true}
+                minimumFontScale={0.6}
+              >
+                ₹{youOwe.toLocaleString("en-IN")}
+              </Text>
+              <Text style={styles.metricSubtitle} numberOfLines={1}>Outstanding bills</Text>
+            </Pressable>
+
+            {/* Metric 3: You Are Owed */}
+            <Pressable
+              style={({ pressed, hovered }: any) => [
+                styles.metricCard,
+                { flex: 1 },
+                hovered && styles.cardHovered,
+                pressed && styles.cardPressed,
+              ]}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <Text style={styles.metricLabel} numberOfLines={1}>YOU ARE OWED</Text>
+                <View style={[styles.miniIconBubble, { backgroundColor: "#f0fdf4" }]}>
+                  <TrendingUp size={14} color={colors.success} />
+                </View>
+              </View>
+              <Text
+                style={[styles.metricAmount, { color: colors.success }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit={true}
+                minimumFontScale={0.6}
+              >
+                ₹{youAreOwed.toLocaleString("en-IN")}
+              </Text>
+              <Text style={styles.metricSubtitle} numberOfLines={1}>Reimbursements</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Active Group Spend & Limits Card */}
+        <Text style={styles.sectionTitle}>Active Group Spend & Limits</Text>
+        <Text style={styles.sectionSubtitle}>Real-time status of your active group budget limits.</Text>
+
+        {groups.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No active group pools. Create one under Groups tab!</Text>
+          </View>
+        ) : (
+          groups.map((g) => {
+            const groupExpenses = spendExpenses.filter((e) => e.groupId === g.id);
+            const groupSpent = groupExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+            const budgetLimit = g.budget || 50000; // fallback limit
+            const pct = Math.round((groupSpent / budgetLimit) * 100);
+            return (
+              <Pressable
+                key={g.id}
+                style={({ pressed, hovered }: any) => [
+                  styles.groupPoolCard,
+                  hovered && styles.cardHovered,
+                  pressed && styles.cardPressed,
+                ]}
+                onPress={() => navigate("/groups/[id]", { id: g.id })}
+              >
+                <Text style={styles.poolTag}>GROUP POOL</Text>
+                <Text style={styles.poolName}>{g.name}</Text>
+
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12, marginBottom: 4 }}>
+                  <Text style={styles.poolMetaText}>SPENT: ₹{groupSpent.toLocaleString("en-IN")}</Text>
+                  <Text style={styles.poolMetaText}>LIMIT: ₹{budgetLimit.toLocaleString("en-IN")}</Text>
+                </View>
+
+                <View style={[styles.progressBarBg, { height: 6, marginBottom: 12 }]}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      {
+                        width: `${Math.min(100, pct)}%`,
+                        backgroundColor: groupSpent > budgetLimit ? colors.destructive : colors.success
+                      }
+                    ]}
+                  />
+                </View>
+
+                <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={styles.poolLinkText}>View Group Details</Text>
+                  <TrendingUp size={14} color={colors.mutedForeground} />
+                </View>
+              </Pressable>
             );
           })
         )}
-      </View>
 
-      {/* Quick Add Expense Modal (from the fourth screenshot) */}
-      <Modal visible={showQuickAddModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Quick Add Expense</Text>
-              <Pressable onPress={() => {
-                setShowQuickAddModal(false);
-                setFriendUsername("");
-                setQuickTitle("");
-                setQuickAmount("");
-              }}>
-                <X size={20} color={Colors.foreground} />
-              </Pressable>
-            </View>
+        {/* AI Insights Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>AI Insights</Text>
+          <Pressable onPress={loadInsights} disabled={loadingInsights}>
+            {loadingInsights ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <RefreshCw size={14} color={colors.mutedForeground} />
+            )}
+          </Pressable>
+        </View>
 
-            <Text style={styles.modalSubtitle}>
-              Directly split a bill with any registered user by their username.
-            </Text>
+        <Pressable
+          style={({ pressed, hovered }: any) => [
+            styles.insightsCard,
+            hovered && styles.cardHovered,
+            pressed && styles.cardPressed,
+          ]}
+        >
+          {aiInsights.map((insight, idx) => {
+            const Icon = INSIGHT_ICON[insight.type] || Lightbulb;
+            return (
+              <View key={idx} style={[styles.insightRow, idx > 0 && styles.insightBorder]}>
+                <View style={[styles.insightIconBg, { backgroundColor: insight.type === "warning" ? "#fdf2f2" : "#f0fdf4" }]}>
+                  <Icon size={14} color={insight.type === "warning" ? colors.destructive : colors.success} />
+                </View>
+                <View style={styles.insightContent}>
+                  <Text style={styles.insightTitle}>{insight.title}</Text>
+                  <Text style={styles.insightMessage}>{insight.message}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </Pressable>
 
-            <ScrollView contentContainerStyle={{ gap: 16, width: "100%", paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Friend's Username</Text>
-                <TextInput
-                  style={styles.input}
-                  value={friendUsername}
-                  onChangeText={setFriendUsername}
-                  placeholder="@username"
-                  placeholderTextColor={Colors.mutedForeground}
-                  autoCapitalize="none"
-                />
+        {/* Recent Splits List */}
+        <Text style={styles.sectionTitle}>Recent Splits</Text>
+        <View style={styles.listCard}>
+          {recentExpenses.length === 0 ? (
+            <Text style={styles.emptyText}>No recent split transactions.</Text>
+          ) : (
+            recentExpenses.map((item, index) => {
+              const groupName = groups.find((g) => g.id === item.groupId)?.name || "Group";
+              return (
+                <View key={item.id} style={[styles.expenseItem, index > 0 && styles.insightBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.expenseTitle}>{item.title}</Text>
+                    <Text style={styles.expenseMeta}>{groupName} • {item.date}</Text>
+                  </View>
+                  <Text style={styles.expenseAmount}>₹{item.amount}</Text>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* Quick Add Expense Modal */}
+        <Modal visible={showQuickAddModal} animationType="slide" transparent>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalOverlay}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Quick Add Expense</Text>
+                <Pressable onPress={() => {
+                  setShowQuickAddModal(false);
+                  setFriendUsername("");
+                  setQuickTitle("");
+                  setQuickAmount("");
+                }}>
+                  <X size={20} color={colors.foreground} />
+                </Pressable>
               </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Description</Text>
-                <TextInput
-                  style={styles.input}
-                  value={quickTitle}
-                  onChangeText={setQuickTitle}
-                  placeholder="e.g., Lunch, Groceries, Movie"
-                  placeholderTextColor={Colors.mutedForeground}
-                />
-              </View>
+              <Text style={styles.modalSubtitle}>
+                Directly split a bill with any registered user by their username.
+              </Text>
 
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <View style={[styles.inputContainer, { flex: 1 }]}>
-                  <Text style={styles.label}>Amount (₹)</Text>
+              <ScrollView contentContainerStyle={{ gap: 16, width: "100%", paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Friend's Username</Text>
                   <TextInput
                     style={styles.input}
-                    value={quickAmount}
-                    onChangeText={setQuickAmount}
-                    placeholder="0.00"
-                    placeholderTextColor={Colors.mutedForeground}
-                    keyboardType="numeric"
+                    value={friendUsername}
+                    onChangeText={setFriendUsername}
+                    placeholder="@username"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
                   />
                 </View>
-                <View style={[styles.inputContainer, { flex: 1 }]}>
-                  <Text style={styles.label}>Who Paid?</Text>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Description</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={quickTitle}
+                    onChangeText={setQuickTitle}
+                    placeholder="e.g., Lunch, Groceries, Movie"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.label}>Amount (₹)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={quickAmount}
+                      onChangeText={setQuickAmount}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.label}>Who Paid?</Text>
+                    <View style={styles.dropdownContainer}>
+                      <Pressable
+                        style={styles.dropdownBtn}
+                        onPress={() => {
+                          setWhoPaid(whoPaid === "me" ? "friend" : "me");
+                        }}
+                      >
+                        <Text style={styles.dropdownBtnText}>
+                          {whoPaid === "me" ? "I paid" : "They paid"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Splitting Option</Text>
                   <View style={styles.dropdownContainer}>
-                    <Pressable 
+                    <Pressable
                       style={styles.dropdownBtn}
                       onPress={() => {
-                        setWhoPaid(whoPaid === "me" ? "friend" : "me");
+                        setSplitOption(splitOption === "equal" ? "lend" : splitOption === "lend" ? "borrow" : "equal");
                       }}
                     >
                       <Text style={styles.dropdownBtnText}>
-                        {whoPaid === "me" ? "I paid" : "They paid"}
+                        {splitOption === "equal" ? "Split Equally (50/50)" : splitOption === "lend" ? "You paid, they owe full" : "They paid, you owe full"}
                       </Text>
                     </Pressable>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Splitting Option</Text>
-                <View style={styles.dropdownContainer}>
-                  <Pressable 
-                    style={styles.dropdownBtn}
-                    onPress={() => {
-                      setSplitOption(splitOption === "equal" ? "lend" : splitOption === "lend" ? "borrow" : "equal");
-                    }}
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 16, marginTop: 15 }}>
+                  <Pressable onPress={() => setShowQuickAddModal(false)}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.logSplitBtn}
+                    onPress={handleLogQuickSplit}
+                    disabled={loggingSplit}
                   >
-                    <Text style={styles.dropdownBtnText}>
-                      {splitOption === "equal" ? "Split Equally (50/50)" : splitOption === "lend" ? "You paid, they owe full" : "They paid, you owe full"}
-                    </Text>
+                    {loggingSplit ? (
+                      <ActivityIndicator color={colors.primaryForeground} size="small" />
+                    ) : (
+                      <Text style={styles.logSplitBtnText}>Log Split</Text>
+                    )}
                   </Pressable>
                 </View>
-              </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
-              <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 16, marginTop: 15 }}>
-                <Pressable onPress={() => setShowQuickAddModal(false)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </Pressable>
-                <Pressable 
-                  style={styles.logSplitBtn} 
-                  onPress={handleLogQuickSplit}
-                  disabled={loggingSplit}
-                >
-                  {loggingSplit ? (
-                    <ActivityIndicator color={Colors.primaryForeground} size="small" />
-                  ) : (
-                    <Text style={styles.logSplitBtnText}>Log Split</Text>
-                  )}
+        {/* Menu Modal (themed replacement for Alert.alert) */}
+        <Modal visible={showMenuModal} animationType="fade" transparent>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowMenuModal(false)}>
+            <View style={[styles.modalContent, { maxWidth: 320, alignItems: "stretch" }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Menu</Text>
+                <Pressable onPress={() => setShowMenuModal(false)}>
+                  <X size={20} color={colors.mutedForeground} />
                 </Pressable>
               </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
+              <Pressable
+                style={{
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+                onPress={() => {
+                  setShowMenuModal(false);
+                  navigate("/network");
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>
+                  Settle Up
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 2 }}>
+                  Go to your network to manage settlements
+                </Text>
+              </Pressable>
+              <Pressable
+                style={{ paddingVertical: 14 }}
+                onPress={() => setShowMenuModal(false)}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "600", color: colors.mutedForeground }}>
+                  Cancel
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      </ScrollView>
+    </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: Colors.background,
-    flexGrow: 1,
-  },
-  header: {
-    marginBottom: 20,
-    gap: 4,
-    flex: 1,
-    paddingRight: 10,
-  },
-  threeDotsBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: Colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 20,
-    width: "100%",
-    alignItems: "flex-start",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    paddingBottom: 10,
-    marginBottom: 6,
-  },
-  modalTitle: {
-    fontSize: Typography.fontSize.base,
-    fontWeight: "bold",
-    color: Colors.foreground,
-  },
-  modalSubtitle: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    marginBottom: 16,
-    lineHeight: 16,
-  },
-  inputContainer: {
-    width: "100%",
-    gap: 6,
-  },
-  label: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: "bold",
-    color: Colors.foreground,
-  },
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
-  },
-  dropdownContainer: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    backgroundColor: Colors.background,
-    overflow: "hidden",
-  },
-  dropdownBtn: {
-    height: 40,
-    paddingHorizontal: 12,
-    justifyContent: "center",
-  },
-  dropdownBtnText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-  },
-  cancelBtnText: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: "bold",
-    color: Colors.mutedForeground,
-  },
-  logSplitBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logSplitBtnText: {
-    color: Colors.primaryForeground,
-    fontSize: Typography.fontSize.sm,
-    fontWeight: "bold",
-  },
-  overviewLabel: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
-    fontWeight: "bold",
-    letterSpacing: 1.5,
-  },
-  nameText: {
-    fontSize: Typography.fontSize.xl,
-    fontWeight: "900",
-    color: Colors.foreground,
-  },
-  descriptionText: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  webActionsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 24,
-  },
-  webActionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  webActionText: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: "bold",
-  },
-  metricsGrid: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  metricCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
-  },
-  metricLabel: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
-    fontWeight: "bold",
-    letterSpacing: 1,
-  },
-  metricAmount: {
-    fontSize: Typography.fontSize.xl,
-    fontWeight: "900",
-    color: Colors.foreground,
-    marginVertical: 4,
-  },
-  metricSubtitle: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    marginTop: 2,
-  },
-  sectionTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: "bold",
-    color: Colors.foreground,
-    marginBottom: 2,
-  },
-  sectionSubtitle: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    marginBottom: 12,
-  },
-  groupPoolCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
-    marginBottom: 24,
-  },
-  poolTag: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
-    fontWeight: "bold",
-    letterSpacing: 1,
-  },
-  poolName: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: Colors.foreground,
-    marginTop: 4,
-  },
-  poolMetaText: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
-  },
-  poolLinkText: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: "bold",
-    color: Colors.foreground,
-  },
-  emptyCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 24,
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  insightsCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
-    marginBottom: 24,
-  },
-  insightRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 12,
-    gap: 12,
-  },
-  insightBorder: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  insightIconBg: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  insightContent: {
-    flex: 1,
-  },
-  insightTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-  },
-  insightMessage: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  listCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
-    marginBottom: 20,
-  },
-  emptyText: {
-    textAlign: "center",
-    color: Colors.mutedForeground,
-    fontSize: Typography.fontSize.sm,
-    paddingVertical: 12,
-  },
-  expenseItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  expenseTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
-  },
-  expenseMeta: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
-    marginTop: 2,
-  },
-  expenseAmount: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-  },
-  analyticsCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
-    marginBottom: 24,
-  },
-  analyticsSub: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: "bold",
-    color: Colors.foreground,
-    marginBottom: 16,
-  },
-  analyticsRow: {
-    marginBottom: 16,
-  },
-  analyticsTextRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  analyticsLabel: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: "600",
-    color: Colors.mutedForeground,
-  },
-  analyticsVal: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: "bold",
-    color: Colors.foreground,
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: Colors.background,
-    borderRadius: 4,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: Colors.primary,
-    borderRadius: 4,
-  },
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      padding: 20,
+      backgroundColor: colors.background,
+      flexGrow: 1,
+    },
+    header: {
+      marginBottom: 20,
+      gap: 4,
+      flex: 1,
+      paddingRight: 10,
+    },
+    threeDotsBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.4)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    },
+    modalContent: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      width: "100%",
+      alignItems: "flex-start",
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingBottom: 10,
+      marginBottom: 6,
+    },
+    modalTitle: {
+      fontSize: Typography.fontSize.base,
+      fontWeight: "bold",
+      color: colors.foreground,
+    },
+    modalSubtitle: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 16,
+      lineHeight: 16,
+    },
+    inputContainer: {
+      width: "100%",
+      gap: 6,
+    },
+    label: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: "bold",
+      color: colors.foreground,
+    },
+    input: {
+      height: 40,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      fontSize: Typography.fontSize.sm,
+      color: colors.foreground,
+      backgroundColor: colors.background,
+    },
+    dropdownContainer: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.background,
+      overflow: "hidden",
+    },
+    dropdownBtn: {
+      height: 40,
+      paddingHorizontal: 12,
+      justifyContent: "center",
+    },
+    dropdownBtnText: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.foreground,
+    },
+    cancelBtnText: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+      color: colors.mutedForeground,
+    },
+    logSplitBtn: {
+      backgroundColor: colors.primary,
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    logSplitBtnText: {
+      color: colors.primaryForeground,
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+    },
+    overviewLabel: {
+      fontSize: Typography.fontSize.xs,
+      fontFamily: Typography.fontFamily.mono,
+      color: colors.mutedForeground,
+      fontWeight: "bold",
+      letterSpacing: 1.5,
+    },
+    nameText: {
+      fontSize: Typography.fontSize.xl,
+      fontWeight: "900",
+      color: colors.foreground,
+    },
+    descriptionText: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      lineHeight: 18,
+      marginTop: 4,
+    },
+    webActionsRow: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 24,
+    },
+    webActionBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 10,
+      borderRadius: 12,
+    },
+    webActionText: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: "bold",
+    },
+    metricsGrid: {
+      gap: 16,
+      marginBottom: 24,
+    },
+    miniIconBubble: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.secondary,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    metricCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 16,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    cardHovered: {
+      transform: [{ translateY: -4 }, { scale: 1.015 }],
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+      borderColor: colors.border,
+    },
+    cardPressed: {
+      transform: [{ translateY: -1 }, { scale: 0.985 }],
+      opacity: 0.92,
+    },
+    btnHovered: {
+      transform: [{ translateY: -2 }],
+      opacity: 0.95,
+    },
+    metricLabel: {
+      fontSize: Typography.fontSize.xs,
+      fontFamily: Typography.fontFamily.mono,
+      color: colors.mutedForeground,
+      fontWeight: "bold",
+      letterSpacing: 1,
+    },
+    metricAmount: {
+      fontSize: Typography.fontSize.xl,
+      fontWeight: "900",
+      color: colors.foreground,
+      marginVertical: 4,
+    },
+    metricSubtitle: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    sectionTitle: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+      color: colors.foreground,
+      marginBottom: 2,
+    },
+    sectionSubtitle: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 12,
+    },
+    groupPoolCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 16,
+      marginBottom: 24,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    poolTag: {
+      fontSize: Typography.fontSize.xs,
+      fontFamily: Typography.fontFamily.mono,
+      color: colors.mutedForeground,
+      fontWeight: "bold",
+      letterSpacing: 1,
+    },
+    poolName: {
+      fontSize: 16,
+      fontWeight: "900",
+      color: colors.foreground,
+      marginTop: 4,
+    },
+    poolMetaText: {
+      fontSize: Typography.fontSize.xs,
+      fontFamily: Typography.fontFamily.mono,
+      color: colors.mutedForeground,
+    },
+    poolLinkText: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: "bold",
+      color: colors.foreground,
+    },
+    emptyCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 24,
+      alignItems: "center",
+      marginBottom: 24,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    insightsCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 16,
+      marginBottom: 24,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    insightRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      paddingVertical: 12,
+      gap: 12,
+    },
+    insightBorder: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    insightIconBg: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    insightContent: {
+      flex: 1,
+    },
+    insightTitle: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.bold,
+      color: colors.foreground,
+    },
+    insightMessage: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      marginTop: 2,
+      lineHeight: 16,
+    },
+    listCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 16,
+      marginBottom: 20,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    emptyText: {
+      textAlign: "center",
+      color: colors.mutedForeground,
+      fontSize: Typography.fontSize.sm,
+      paddingVertical: 12,
+    },
+    expenseItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+    },
+    expenseTitle: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.semibold,
+      color: colors.foreground,
+    },
+    expenseMeta: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    expenseAmount: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.bold,
+      color: colors.foreground,
+    },
+    analyticsCard: {
+      backgroundColor: colors.glassCard,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      padding: 16,
+      marginBottom: 24,
+      shadowColor: "#2a2621",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    analyticsSub: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+      color: colors.foreground,
+      marginBottom: 16,
+    },
+    analyticsRow: {
+      marginBottom: 16,
+    },
+    analyticsTextRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    analyticsLabel: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: "600",
+      color: colors.mutedForeground,
+    },
+    analyticsVal: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: "bold",
+      color: colors.foreground,
+    },
+    progressBarBg: {
+      height: 8,
+      backgroundColor: colors.background,
+      borderRadius: 4,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    progressBarFill: {
+      height: "100%",
+      backgroundColor: colors.primary,
+      borderRadius: 4,
+    },
+  });
+}

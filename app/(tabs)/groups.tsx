@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, ActivityIndicator, Alert, Platform } from "react-native";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, ActivityIndicator, Alert, Platform, Image, KeyboardAvoidingView, Animated } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
 import { dbSetDoc, dbDeleteDoc, dbGetDocsInBatches } from "../../lib/firestoreQuery";
-import { Colors } from "../../constants/colors";
+import { useTheme } from "../../lib/ThemeContext";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { 
   Users, 
@@ -15,7 +16,9 @@ import {
   Home, 
   GraduationCap, 
   Rocket, 
-  Sparkles
+  Sparkles,
+  ShieldAlert,
+  Check
 } from "lucide-react-native";
 
 const CONTEXT_PRESETS = {
@@ -26,12 +29,20 @@ const CONTEXT_PRESETS = {
   group: { label: "Custom", icon: Users, desc: "Outings, dining, custom splits" }
 };
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 export default function GroupsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+    const insets = useSafeAreaInsets();
   const { user, profile, groups, navigate } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [dailySpendCap, setDailySpendCap] = useState("");
   const [category, setCategory] = useState<keyof typeof CONTEXT_PRESETS>("trip");
 
   const [friendsList, setFriendsList] = useState<any[]>([]);
@@ -41,6 +52,28 @@ export default function GroupsScreen() {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [selectedGroupName, setSelectedGroupName] = useState("");
+
+  const [creationStep, setCreationStep] = useState<1 | 2>(1);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(6)).current;
+
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    translateYAnim.setValue(6);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Fetch profiles for the user's friends list
   useEffect(() => {
@@ -113,6 +146,7 @@ export default function GroupsScreen() {
       setDescription("");
       setBudget("");
       setSelectedFriends([]);
+      setCreationStep(1);
       // Open the new group
       navigate("/groups/[id]", { id: groupId });
     } catch (err) {
@@ -138,19 +172,26 @@ export default function GroupsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+    <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: translateYAnim }] }}>
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
           <Text style={styles.title}>My Groups</Text>
-          <Pressable style={styles.createBtn} onPress={() => setShowModal(true)}>
-            <Plus size={16} color={Colors.primaryForeground} />
+          <Pressable 
+            style={styles.createBtn} 
+            onPress={() => {
+              setCreationStep(1);
+              setShowModal(true);
+            }}
+          >
+            <Plus size={16} color={colors.primaryForeground} />
             <Text style={styles.createBtnText}>Create Group</Text>
           </Pressable>
         </View>
 
         {groups.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Users size={40} color={Colors.mutedForeground} style={{ marginBottom: 10 }} />
+            <Users size={40} color={colors.mutedForeground} style={{ marginBottom: 10 }} />
             <Text style={styles.emptyTitle}>No Groups Yet</Text>
             <Text style={styles.emptyDesc}>Create a group or ask a friend to add you to start splitting.</Text>
           </View>
@@ -165,7 +206,7 @@ export default function GroupsScreen() {
                 onPress={() => navigate("/groups/[id]", { id: group.id })}
               >
                 <View style={styles.groupIconBg}>
-                  <Icon size={20} color={Colors.primary} />
+                  <Icon size={20} color={colors.primary} />
                 </View>
                 <View style={styles.groupInfo}>
                   <Text style={styles.groupName}>{group.name}</Text>
@@ -177,9 +218,9 @@ export default function GroupsScreen() {
                     style={styles.deleteBtn}
                     onPress={() => handleDeleteGroup(group.id, group.name)}
                   >
-                    <Trash2 size={16} color={Colors.destructive} />
+                    <Trash2 size={16} color={colors.destructive} />
                   </Pressable>
-                  <ChevronRight size={18} color={Colors.mutedForeground} />
+                  <ChevronRight size={18} color={colors.mutedForeground} />
                 </View>
               </Pressable>
             );
@@ -189,114 +230,210 @@ export default function GroupsScreen() {
 
       {/* Creation Modal */}
       <Modal visible={showModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create New Group</Text>
+              <Text style={styles.modalTitle}>CREATE CONTEXT LEDGER</Text>
               <Pressable onPress={() => setShowModal(false)}>
-                <X size={20} color={Colors.foreground} />
+                <X size={20} color={colors.foreground} />
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Group Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="e.g. Goa Trip 2026"
-                  placeholderTextColor={Colors.mutedForeground}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Description</Text>
-                <TextInput
-                  style={styles.input}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="What is this group for?"
-                  placeholderTextColor={Colors.mutedForeground}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Budget (INR)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={budget}
-                  onChangeText={setBudget}
-                  placeholder="e.g. 50000"
-                  placeholderTextColor={Colors.mutedForeground}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Group Type</Text>
-                <View style={styles.presetGrid}>
+            {creationStep === 1 ? (
+              <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+                <Text style={styles.monoStepLabel}>1. SELECT CONTEXT TYPE</Text>
+                
+                <View style={styles.contextTypesList}>
                   {Object.entries(CONTEXT_PRESETS).map(([key, value]) => {
-                    const active = category === key;
                     const PresetIcon = value.icon;
                     return (
                       <Pressable
                         key={key}
-                        style={[styles.presetItem, active && styles.presetItemActive]}
-                        onPress={() => setCategory(key as keyof typeof CONTEXT_PRESETS)}
+                        style={styles.contextTypeCard}
+                        onPress={() => {
+                          setCategory(key as keyof typeof CONTEXT_PRESETS);
+                          setCreationStep(2);
+                        }}
                       >
-                        <PresetIcon size={16} color={active ? Colors.primaryForeground : Colors.foreground} />
-                        <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{value.label}</Text>
+                        <View style={styles.contextIconBubble}>
+                          <PresetIcon size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.contextCardTitle}>{value.label.toUpperCase()}</Text>
+                          <Text style={styles.contextCardDesc}>{value.desc}</Text>
+                        </View>
                       </Pressable>
                     );
                   })}
                 </View>
-              </View>
+              </ScrollView>
+            ) : (
+              <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+                <View style={styles.inputContainer}>
+                  <Text style={styles.monoLabel}>CONTEXT NAME</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="e.g. Goa Trip, 221B Flat, Buildmint Ops"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
 
-              {/* Friends list */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Add Friends</Text>
-                {loadingFriends ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : friendsList.length === 0 ? (
-                  <Text style={styles.emptyFriends}>No friends found in your network hub. Save peers first.</Text>
-                ) : (
-                  <View style={styles.friendsList}>
-                    {friendsList.map((friend) => {
-                      const selected = selectedFriends.some((f) => f.uid === friend.uid);
-                      return (
-                        <Pressable
-                          key={friend.uid}
-                          style={[styles.friendItem, selected && styles.friendItemSelected]}
-                          onPress={() => toggleSelectFriend(friend)}
-                        >
-                          <Text style={[styles.friendName, selected && styles.friendNameSelected]}>
-                            {friend.nickname || friend.name || `@${friend.username}`}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                <View style={styles.inputContainer}>
+                  <Text style={styles.monoLabel}>DESCRIPTION</Text>
+                  <TextInput
+                    style={[styles.input, { height: 64, textAlignVertical: "top", paddingTop: 8 }]}
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    placeholder="e.g. Rent splits, hostel mesh, or operations budget"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+
+                <View style={styles.rowTwoCol}>
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.monoLabel}>CURRENCY</Text>
+                    <View style={styles.dropdownPicker}>
+                      <Text style={styles.dropdownPickerText}>INR (₹)</Text>
+                    </View>
                   </View>
-                )}
-              </View>
 
-              <Pressable
-                style={({ pressed }) => [styles.submitBtn, pressed && { opacity: 0.9 }]}
-                onPress={handleCreateGroup}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color={Colors.primaryForeground} />
-                ) : (
-                  <>
-                    <Sparkles size={16} color={Colors.primaryForeground} />
-                    <Text style={styles.submitText}>Create Group & Setup Ledger</Text>
-                  </>
-                )}
-              </Pressable>
-            </ScrollView>
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.monoLabel}>BUDGET CAP</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={budget}
+                      onChangeText={setBudget}
+                      placeholder="e.g. 50000"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.rowTwoCol}>
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.monoLabel}>START DATE</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={startDate}
+                      onChangeText={setStartDate}
+                      placeholder="mm/dd/yyyy"
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+
+                  <View style={[styles.inputContainer, { flex: 1 }]}>
+                    <Text style={styles.monoLabel}>END DATE</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={endDate}
+                      onChangeText={setEndDate}
+                      placeholder="mm/dd/yyyy"
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.monoLabel}>DAILY SPEND CAP</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={dailySpendCap}
+                    onChangeText={setDailySpendCap}
+                    placeholder="e.g. 5000"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <Text style={styles.monoLabel}>SELECT VERIFIED MEMBERS</Text>
+                    <Text style={[styles.monoLabel, { color: colors.primary }]}>[ YOU ARE AUTOMATICALLY MEMBER 1 ]</Text>
+                  </View>
+
+                  {loadingFriends ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
+                  ) : friendsList.length === 0 ? (
+                    <View style={styles.noConnectionsBox}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <ShieldAlert size={18} color="#d97706" />
+                        <Text style={styles.noConnTitle}>NO CONNECTIONS VERIFIED</Text>
+                      </View>
+                      <Text style={styles.noConnDesc}>
+                        Only mutually accepted friends are eligible to join sharing contexts. Connect with members first!
+                      </Text>
+                      <Pressable
+                        style={styles.gotoConnBtn}
+                        onPress={() => {
+                          setShowModal(false);
+                          navigate("/network");
+                        }}
+                      >
+                        <Text style={styles.gotoConnText}>[ GOTO CONNECTIONS CENTER ]</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View style={styles.friendsListContainer}>
+                      {friendsList.map((friend) => {
+                        const isSelected = selectedFriends.some((f) => f.uid === friend.uid);
+                        const displayName = friend.nickname || friend.name || friend.username || "Friend";
+                        const displayHandle = friend.username ? `@${friend.username}` : "";
+                        const photoUri = friend.photoURL || friend.avatarUrl || friend.photo || friend.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=3e8e7e&color=fff&bold=true`;
+
+                        return (
+                          <Pressable
+                            key={friend.uid}
+                            style={[styles.friendRowCard, isSelected && styles.friendRowCardSelected]}
+                            onPress={() => toggleSelectFriend(friend)}
+                          >
+                            <View style={styles.friendAvatarBubble}>
+                              <Image source={{ uri: photoUri }} style={styles.avatarImg} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.friendRowName}>{displayName}</Text>
+                              {displayHandle ? <Text style={styles.friendRowHandle}>{displayHandle}</Text> : null}
+                            </View>
+                            <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
+                              {isSelected ? <Check size={14} color={colors.primaryForeground} /> : null}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.modalFooterRow}>
+                  <Pressable
+                    style={styles.cancelModalBtn}
+                    onPress={() => setCreationStep(1)}
+                  >
+                    <Text style={styles.cancelModalText}>BACK</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.submitLedgerBtn, saving && { opacity: 0.7 }]}
+                    onPress={handleCreateGroup}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color={colors.primaryForeground} />
+                    ) : (
+                      <Text style={styles.submitLedgerText}>CREATE LEDGER</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Custom Confirmation Modal */}
@@ -315,10 +452,10 @@ export default function GroupsScreen() {
           <View style={{
             width: "90%",
             maxWidth: 340,
-            backgroundColor: "#F4EFE6",
+            backgroundColor: colors.card,
             borderRadius: 28,
             borderWidth: 1,
-            borderColor: "#E8E2D5",
+            borderColor: colors.border,
             padding: 28,
             shadowColor: "#000",
             shadowOffset: { width: 0, height: 10 },
@@ -329,14 +466,14 @@ export default function GroupsScreen() {
             <Text style={{
               fontSize: 20,
               fontWeight: "900",
-              color: "#2B2927",
+              color: colors.foreground,
               marginBottom: 12,
               textTransform: "uppercase",
               letterSpacing: -0.5
             }}>Delete this group?</Text>
             <Text style={{
               fontSize: 14,
-              color: "#5C5955",
+              color: colors.mutedForeground,
               lineHeight: 20,
               marginBottom: 24
             }}>This action cannot be undone. This group, along with all its expenses, settlements, and activity logs, will be permanently deleted.</Text>
@@ -352,7 +489,7 @@ export default function GroupsScreen() {
                   height: 44,
                   borderRadius: 22,
                   borderWidth: 1,
-                  borderColor: "#C5BFA5",
+                  borderColor: colors.border,
                   justifyContent: "center",
                   alignItems: "center"
                 }}
@@ -360,7 +497,7 @@ export default function GroupsScreen() {
                 <Text style={{
                   fontSize: 12,
                   fontWeight: "900",
-                  color: "#5C5955",
+                  color: colors.mutedForeground,
                   textTransform: "uppercase",
                   letterSpacing: 0.5
                 }}>Cancel</Text>
@@ -397,13 +534,14 @@ export default function GroupsScreen() {
         </View>
       </Modal>
     </View>
-  );
+  </Animated.View>
+);
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   scroll: {
     padding: 20,
@@ -417,10 +555,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   createBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -429,28 +567,33 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   createBtnText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.xs,
     fontWeight: Typography.fontWeight.semibold,
   },
   emptyCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.glassBorder,
     padding: 30,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 40,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   emptyTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   emptyDesc: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     textAlign: "center",
     marginTop: 6,
     lineHeight: 18,
@@ -458,18 +601,23 @@ const styles = StyleSheet.create({
   groupCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.glassBorder,
     padding: 16,
     marginBottom: 12,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   groupIconBg: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -480,16 +628,16 @@ const styles = StyleSheet.create({
   groupName: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   groupDesc: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
   },
   membersCount: {
     fontSize: 10,
-    color: Colors.primary,
+    color: colors.primary,
     fontFamily: Typography.fontFamily.mono,
     marginTop: 4,
   },
@@ -507,7 +655,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: "85%",
@@ -518,14 +666,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
     paddingBottom: 15,
     marginBottom: 15,
   },
   modalTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   modalForm: {
     gap: 16,
@@ -537,17 +685,214 @@ const styles = StyleSheet.create({
   label: {
     fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   input: {
     height: 44,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
+    color: colors.foreground,
+    backgroundColor: colors.background,
+  },
+  monoStepLabel: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
+    marginBottom: 12,
+    textTransform: "uppercase",
+  },
+  contextTypesList: {
+    gap: 12,
+  },
+  contextTypeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: colors.glassCard,
+  },
+  contextIconBubble: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contextCardTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: colors.foreground,
+    letterSpacing: 0.5,
+  },
+  contextCardDesc: {
+    fontSize: Typography.fontSize.xs,
+    color: colors.mutedForeground,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  monoLabel: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  rowTwoCol: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dropdownPicker: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  dropdownPickerText: {
+    fontSize: Typography.fontSize.sm,
+    color: colors.foreground,
+    fontWeight: "600",
+  },
+  noConnectionsBox: {
+    backgroundColor: "#fffdf0",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    borderRadius: 14,
+    padding: 14,
+    marginVertical: 4,
+  },
+  noConnTitle: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: "#d97706",
+    fontWeight: "bold",
+    letterSpacing: 1,
+  },
+  noConnDesc: {
+    fontSize: Typography.fontSize.xs,
+    color: "#92400e",
+    lineHeight: 18,
+    marginVertical: 4,
+  },
+  gotoConnBtn: {
+    backgroundColor: "#d97706",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  gotoConnText: {
+    color: "#ffffff",
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+  },
+  friendsListContainer: {
+    gap: 8,
+  },
+  friendRowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: colors.background,
+  },
+  friendRowCardSelected: {
+    borderColor: colors.primary,
+    backgroundColor: "#f5ebea",
+  },
+  friendAvatarBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  avatarInitial: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: colors.foreground,
+  },
+  friendRowName: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "bold",
+    color: colors.foreground,
+  },
+  friendRowHandle: {
+    fontSize: Typography.fontSize.xs,
+    color: colors.primary,
+    fontWeight: "bold",
+  },
+  selectCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectCheckboxActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  modalFooterRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  cancelModalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+  },
+  cancelModalText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    color: colors.foreground,
+    fontFamily: Typography.fontFamily.mono,
+  },
+  submitLedgerBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitLedgerText: {
+    color: colors.primaryForeground,
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    fontFamily: Typography.fontFamily.mono,
   },
   presetGrid: {
     flexDirection: "row",
@@ -559,27 +904,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   presetItemActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   presetLabel: {
     fontSize: Typography.fontSize.xs,
     fontWeight: Typography.fontWeight.medium,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   presetLabelActive: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
   },
   emptyFriends: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontStyle: "italic",
   },
   friendsList: {
@@ -589,26 +934,26 @@ const styles = StyleSheet.create({
   },
   friendItem: {
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   friendItemSelected: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   friendName: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   friendNameSelected: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontWeight: "bold",
   },
   submitBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     height: 48,
     borderRadius: 10,
     flexDirection: "row",
@@ -618,8 +963,8 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   submitText: {
-    color: Colors.primaryForeground,
-    fontSize: Typography.fontSize.base,
+    color: colors.primaryForeground,
+    fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.bold,
   },
-});
+}); }

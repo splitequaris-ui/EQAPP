@@ -1,16 +1,40 @@
-import React, { useState, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator, Clipboard, Share } from "react-native";
+import React, { useState, useMemo, useRef, useEffect } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator, Clipboard, Share, Animated } from "react-native";
 import { useApp } from "../../lib/AppContext";
 import { calculateBalances } from "../../lib/settleEngine";
 import { db } from "../../lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
-import { Colors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, Layers, Plus, Calendar, Play, Pause } from "lucide-react-native";
+import { useTheme } from "../../lib/ThemeContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function MoneyScreen() {
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const { user, groups, allExpenses, subscriptions, navigate } = useApp();
   const [activeTab, setActiveTab] = useState<"reports" | "subs">("reports");
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(6)).current;
+
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    translateYAnim.setValue(6);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [activeTab]);
 
   // --- Reports calculations ---
   const currentMonthExpenses = useMemo(() => {
@@ -117,293 +141,372 @@ export default function MoneyScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Top Tabs */}
-      <View style={styles.tabHeader}>
-        <Pressable
-          style={[styles.tabBtn, activeTab === "reports" && styles.tabBtnActive]}
-          onPress={() => setActiveTab("reports")}
-        >
-          <Text style={[styles.tabText, activeTab === "reports" && styles.tabTextActive]}>Analytics</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabBtn, activeTab === "subs" && styles.tabBtnActive]}
-          onPress={() => setActiveTab("subs")}
-        >
-          <Text style={[styles.tabText, activeTab === "subs" && styles.tabTextActive]}>Subscriptions</Text>
-        </Pressable>
+      {/* Segmented Control */}
+      <View style={styles.segmentedWrapper}>
+        <View style={styles.segmentedControl}>
+          <Pressable
+            style={[styles.segmentBtn, activeTab === "reports" && styles.segmentBtnActive]}
+            onPress={() => setActiveTab("reports")}
+          >
+            <Text style={[styles.segmentText, activeTab === "reports" && styles.segmentTextActive]}>Analytics</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.segmentBtn, activeTab === "subs" && styles.segmentBtnActive]}
+            onPress={() => setActiveTab("subs")}
+          >
+            <Text style={[styles.segmentText, activeTab === "subs" && styles.segmentTextActive]}>Subscriptions</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {activeTab === "reports" ? (
-          <View style={styles.tabContent}>
-            {/* Overview Stats */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Monthly Flow</Text>
-                <Text style={styles.statValue}>₹{Math.round(totalSpentThisMonth).toLocaleString("en-IN")}</Text>
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: translateYAnim }] }}>
+          {activeTab === "reports" ? (
+            <View style={styles.tabContent}>
+              {/* Overview Stats */}
+              <View style={styles.statsGrid}>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel} numberOfLines={1}>MONTHLY FLOW</Text>
+                  <Text 
+                    style={styles.statValue} 
+                    numberOfLines={1} 
+                    adjustsFontSizeToFit={true} 
+                    minimumFontScale={0.6}
+                  >
+                    ₹{Math.round(totalSpentThisMonth).toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel} numberOfLines={1}>YOU OWE</Text>
+                  <Text 
+                    style={[styles.statValue, { color: colors.destructive }]} 
+                    numberOfLines={1} 
+                    adjustsFontSizeToFit={true} 
+                    minimumFontScale={0.6}
+                  >
+                    ₹{Math.round(youOwe).toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel} numberOfLines={1}>OWED TO YOU</Text>
+                  <Text 
+                    style={[styles.statValue, { color: colors.success }]} 
+                    numberOfLines={1} 
+                    adjustsFontSizeToFit={true} 
+                    minimumFontScale={0.6}
+                  >
+                    ₹{Math.round(youAreOwed).toLocaleString("en-IN")}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>You Owe</Text>
-                <Text style={[styles.statValue, { color: Colors.destructive }]}>
-                  ₹{Math.round(youOwe).toLocaleString("en-IN")}
-                </Text>
+
+              {/* Category Breakdown */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Category Breakdown</Text>
+                {categoryBreakdown.length === 0 ? (
+                  <Text style={styles.emptyText}>No data for the current billing cycle.</Text>
+                ) : (
+                  categoryBreakdown.map(([cat, amt]) => {
+                    const pct = Math.round((amt / (totalSpentThisMonth || 1)) * 100);
+                    return (
+                      <View key={cat} style={styles.categoryRow}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={styles.catLabel}>{cat.toUpperCase()}</Text>
+                          <Text style={styles.catValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                            ₹{amt.toLocaleString("en-IN")} ({pct}%)
+                          </Text>
+                        </View>
+                        <View style={styles.progressBg}>
+                          <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
               </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Owed to You</Text>
-                <Text style={[styles.statValue, { color: Colors.success }]}>
-                  ₹{Math.round(youAreOwed).toLocaleString("en-IN")}
-                </Text>
+
+              {/* Context distribution */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Context Distribution</Text>
+                {groups.length === 0 ? (
+                  <Text style={styles.emptyText}>No active group contexts found.</Text>
+                ) : (
+                  groups.map((g) => {
+                    const groupSpend = allExpenses
+                      .filter((e) => e.groupId === g.id && e.category !== "settlement")
+                      .reduce((sum, e) => sum + (e.amount || 0), 0);
+                    const pct = totalSpentThisMonth > 0 ? Math.round((groupSpend / totalSpentThisMonth) * 100) : 0;
+                    return (
+                      <View key={g.id} style={styles.contextRow}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                          <Layers size={16} color={colors.primary} />
+                          <Text style={styles.contextName} numberOfLines={1}>{g.name}</Text>
+                        </View>
+                        <Text style={styles.contextSpend} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                          ₹{groupSpend.toLocaleString("en-IN")} ({pct}%)
+                        </Text>
+                      </View>
+                    );
+                  })
+                )}
               </View>
-            </View>
 
-            {/* Category Breakdown */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Category Breakdown</Text>
-              {categoryBreakdown.length === 0 ? (
-                <Text style={styles.emptyText}>No data for the current billing cycle.</Text>
-              ) : (
-                categoryBreakdown.map(([cat, amt]) => {
-                  const pct = Math.round((amt / (totalSpentThisMonth || 1)) * 100);
-                  return (
-                    <View key={cat} style={styles.categoryRow}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={styles.catLabel}>{cat.toUpperCase()}</Text>
-                        <Text style={styles.catValue}>₹{amt} ({pct}%)</Text>
-                      </View>
-                      <View style={styles.progressBg}>
-                        <View style={[styles.progressFill, { width: `${pct}%` }]} />
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-
-            {/* Context distribution */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Context Distribution</Text>
-              {groups.length === 0 ? (
-                <Text style={styles.emptyText}>No active group contexts found.</Text>
-              ) : (
-                groups.map((g) => {
-                  const groupSpend = allExpenses
-                    .filter((e) => e.groupId === g.id && e.category !== "settlement")
-                    .reduce((sum, e) => sum + (e.amount || 0), 0);
-                  const pct = totalSpentThisMonth > 0 ? Math.round((groupSpend / totalSpentThisMonth) * 100) : 0;
-                  return (
-                    <View key={g.id} style={styles.contextRow}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <Layers size={16} color={Colors.primary} />
-                        <Text style={styles.contextName}>{g.name}</Text>
-                      </View>
-                      <Text style={styles.contextSpend}>₹{groupSpend} ({pct}%)</Text>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-
-            <Pressable style={styles.exportBtn} onPress={exportStatementToClipboard}>
-              <Text style={styles.exportBtnText}>Export Consolidated Ledger CSV</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.tabContent}>
-            {/* Subscriptions Hub */}
-            <View style={styles.subCostCard}>
-              <Text style={styles.subCostLabel}>Monthly Subscriptions cost</Text>
-              <Text style={styles.subCostValue}>₹{Math.round(totalMonthlySubCost).toLocaleString("en-IN")}</Text>
-              <Pressable style={styles.addSubBtn} onPress={() => navigate("/subscriptions/new")}>
-                <Plus size={16} color={Colors.primaryForeground} />
-                <Text style={styles.addSubText}>Add Subscription</Text>
+              <Pressable style={styles.exportBtn} onPress={exportStatementToClipboard}>
+                <Text style={styles.exportBtnText}>Export Consolidated Ledger CSV</Text>
               </Pressable>
             </View>
-
-            {/* Subscriptions List */}
-            <Text style={styles.sectionTitle}>Active Subscriptions ({subscriptions.length})</Text>
-            {subscriptions.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Calendar size={32} color={Colors.mutedForeground} style={{ marginBottom: 8 }} />
-                <Text style={styles.emptyTitle}>No Subscriptions Tracked</Text>
-                <Text style={styles.emptyDesc}>Add recurring billings like Netflix, Spotify to auto-log split splits.</Text>
-              </View>
-            ) : (
-              subscriptions.map((sub) => (
-                <Pressable
-                  key={sub.id}
-                  style={styles.subCard}
-                  onPress={() => navigate("/subscriptions/[id]", { id: sub.id })}
+          ) : (
+            <View style={styles.tabContent}>
+              {/* Subscriptions Hub */}
+              <View style={styles.subCostCard}>
+                <Text style={styles.subCostLabel}>Monthly Subscriptions cost</Text>
+                <Text 
+                  style={styles.subCostValue} 
+                  numberOfLines={1} 
+                  adjustsFontSizeToFit={true} 
+                  minimumFontScale={0.7}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.subName}>{sub.name}</Text>
-                    <Text style={styles.subCycle}>{sub.billingCycle.toUpperCase()} • Renewal: {sub.nextRenewalDate}</Text>
-                    <Text style={styles.subDetails}>₹{sub.amount} ({sub.splitType})</Text>
-                  </View>
-                  <Pressable
-                    style={[styles.toggleBtn, { backgroundColor: sub.status === "active" ? "#fef3c7" : "#e0f2fe" }]}
-                    onPress={() => toggleSubStatus(sub.id, sub.status)}
-                  >
-                    {sub.status === "active" ? (
-                      <Pause size={14} color="#b45309" />
-                    ) : (
-                      <Play size={14} color="#0369a1" />
-                    )}
-                  </Pressable>
+                  ₹{Math.round(totalMonthlySubCost).toLocaleString("en-IN")}
+                </Text>
+                <Pressable style={styles.addSubBtn} onPress={() => navigate("/subscriptions/new")}>
+                  <Plus size={16} color={colors.primaryForeground} />
+                  <Text style={styles.addSubText}>Add Subscription</Text>
                 </Pressable>
-              ))
-            )}
-          </View>
-        )}
+              </View>
+
+              {/* Subscriptions List */}
+              <Text style={styles.sectionTitle}>Active Subscriptions ({subscriptions.length})</Text>
+              {subscriptions.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Calendar size={32} color={colors.mutedForeground} style={{ marginBottom: 8 }} />
+                  <Text style={styles.emptyTitle}>No Subscriptions Tracked</Text>
+                  <Text style={styles.emptyDesc}>Add recurring billings like Netflix, Spotify to auto-log split splits.</Text>
+                </View>
+              ) : (
+                subscriptions.map((sub) => (
+                  <Pressable
+                    key={sub.id}
+                    style={styles.subCard}
+                    onPress={() => navigate("/subscriptions/[id]", { id: sub.id })}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.subName}>{sub.name}</Text>
+                      <Text style={styles.subCycle}>{sub.billingCycle.toUpperCase()} • Renewal: {sub.nextRenewalDate}</Text>
+                      <Text style={styles.subDetails}>₹{sub.amount} ({sub.splitType})</Text>
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.toggleBtn,
+                        { backgroundColor: sub.status === "active" ? (isDark ? "#3b2b1a" : "#fef3c7") : (isDark ? "#1a3a2b" : "#e0f2fe") }
+                      ]}
+                      onPress={() => toggleSubStatus(sub.id, sub.status)}
+                    >
+                      {sub.status === "active" ? (
+                        <Pause size={14} color={isDark ? "#fbbf24" : "#b45309"} />
+                      ) : (
+                        <Play size={14} color={isDark ? "#38bdf8" : "#0369a1"} />
+                      )}
+                    </Pressable>
+                  </Pressable>
+                ))
+              )}
+            </View>
+          )}
+        </Animated.View>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+import { AppColors } from "../../constants/colors";
+
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
-  tabHeader: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    padding: 8,
-    gap: 8,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
+  segmentedWrapper: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: colors.background,
     alignItems: "center",
-    borderRadius: 8,
   },
-  tabBtnActive: {
-    backgroundColor: Colors.primary,
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 3,
   },
-  tabText: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+  segmentBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: "center",
   },
-  tabTextActive: {
-    color: Colors.primaryForeground,
+  segmentBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.mutedForeground,
+  },
+  segmentTextActive: {
+    color: colors.primaryForeground,
+    fontWeight: "700",
   },
   scroll: {
     padding: 20,
+    paddingBottom: 40,
   },
   tabContent: {
-    gap: 16,
+    gap: 20,
   },
   statsGrid: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
   },
   statCard: {
     flex: 1,
-    backgroundColor: Colors.card,
-    borderRadius: 14,
+    backgroundColor: colors.glassCard,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 12,
+    borderColor: colors.glassBorder,
+    padding: 16,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+    minHeight: 80,
+    justifyContent: "center",
   },
   statLabel: {
-    fontSize: 10,
-    color: Colors.mutedForeground,
+    fontSize: 9,
+    color: colors.mutedForeground,
     textTransform: "uppercase",
     fontWeight: Typography.fontWeight.semibold,
+    letterSpacing: 0.8,
+    marginBottom: 6,
   },
   statValue: {
-    fontSize: Typography.fontSize.base,
+    fontSize: 15,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-    marginTop: 4,
+    color: colors.foreground,
+    width: "100%",
+    textAlign: "center",
   },
   card: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
+    backgroundColor: colors.glassCard,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
+    borderColor: colors.glassBorder,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
   },
   cardTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-    marginBottom: 12,
+    fontSize: Typography.fontSize.base,
+    fontWeight: "800",
+    color: colors.foreground,
+    marginBottom: 16,
+    letterSpacing: -0.2,
   },
   categoryRow: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   catLabel: {
-    fontSize: 10,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.mutedForeground,
+    fontSize: 11,
+    fontWeight: Typography.fontWeight.bold,
+    color: colors.foreground,
+    letterSpacing: 0.3,
   },
   catValue: {
-    fontSize: Typography.fontSize.xs,
+    fontSize: 11,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.mutedForeground,
   },
   progressBg: {
-    height: 8,
-    backgroundColor: Colors.background,
-    borderRadius: 4,
-    marginTop: 4,
+    height: 6,
+    backgroundColor: colors.background,
+    borderRadius: 3,
+    marginTop: 8,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   progressFill: {
     height: "100%",
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderRadius: 3,
   },
   contextRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
   },
   contextName: {
     fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   contextSpend: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
+    fontWeight: "600",
   },
   exportBtn: {
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderColor: colors.primary,
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: "center",
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
   },
   exportBtnText: {
-    color: Colors.foreground,
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    fontWeight: Typography.fontWeight.bold,
+    color: colors.primary,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   subCostCard: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: 18,
     padding: 20,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
   subCostLabel: {
     fontSize: 10,
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     opacity: 0.8,
     textTransform: "uppercase",
   },
   subCostValue: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     marginVertical: 10,
   },
   addSubBtn: {
@@ -416,37 +519,42 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   addSubText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.xs,
     fontWeight: Typography.fontWeight.semibold,
   },
   sectionTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   subCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.glassBorder,
     padding: 14,
     flexDirection: "row",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   subName: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   subCycle: {
     fontSize: 10,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
   },
   subDetails: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: "semibold",
     marginTop: 4,
   },
@@ -458,9 +566,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
@@ -469,19 +577,19 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   emptyDesc: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     textAlign: "center",
     marginTop: 4,
     lineHeight: 16,
   },
   emptyText: {
     textAlign: "center",
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontSize: Typography.fontSize.xs,
     paddingVertical: 12,
   },
-});
+}); }

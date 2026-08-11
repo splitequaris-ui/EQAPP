@@ -4,12 +4,15 @@ import { useApp } from "../lib/AppContext";
 import { db, auth as firebaseAuth } from "../lib/firebase";
 import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 import { dbSetDoc, dbGetDoc } from "../lib/firestoreQuery";
-import { Colors } from "../constants/colors";
+import { useTheme } from "../lib/ThemeContext";
+import { AppColors } from "../constants/colors";
 import { Typography } from "../constants/typography";
 import { logoutUser } from "../lib/firebase";
 import { AlertCircle, Check, ChevronRight, CreditCard, LogOut, Phone, User } from "lucide-react-native";
 
 export default function OnboardingScreen() {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { user, profile, updateFullProfile } = useApp();
   const [firstName, setFirstName] = useState("");
   const [surname, setSurname] = useState("");
@@ -191,7 +194,7 @@ export default function OnboardingScreen() {
         <View style={styles.header}>
           <Text style={styles.headerSubtitle}>Equaris Mobile</Text>
           <Pressable style={styles.logoutButton} onPress={() => logoutUser()}>
-            <LogOut size={14} color={Colors.destructive} style={{ marginRight: 4 }} />
+            <LogOut size={14} color={colors.destructive} style={{ marginRight: 4 }} />
             <Text style={styles.logoutText}>Abort</Text>
           </Pressable>
         </View>
@@ -211,7 +214,7 @@ export default function OnboardingScreen() {
                   value={firstName}
                   onChangeText={setFirstName}
                   placeholder="e.g. Parth"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                 />
               </View>
               <View style={[styles.inputContainer, { flex: 1 }]}>
@@ -221,7 +224,7 @@ export default function OnboardingScreen() {
                   value={surname}
                   onChangeText={setSurname}
                   placeholder="e.g. Tyagi"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                 />
               </View>
             </View>
@@ -233,7 +236,7 @@ export default function OnboardingScreen() {
                 value={nickname}
                 onChangeText={setNickname}
                 placeholder="How we'll call you"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
               />
             </View>
 
@@ -244,7 +247,7 @@ export default function OnboardingScreen() {
                 value={phone}
                 onChangeText={setPhone}
                 placeholder="e.g. +91 9876543210"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
                 keyboardType="phone-pad"
               />
             </View>
@@ -265,11 +268,11 @@ export default function OnboardingScreen() {
                 value={username}
                 onChangeText={handleUsernameChange}
                 placeholder="e.g. parth_tyagi"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
               />
               {usernameAvailable !== null && (
-                <Text style={[styles.hint, { color: usernameAvailable ? Colors.success : Colors.destructive }]}>
+                <Text style={[styles.hint, { color: usernameAvailable ? colors.success : colors.destructive }]}>
                   {usernameAvailable ? "Username is available!" : usernameError || "Username is taken."}
                 </Text>
               )}
@@ -282,7 +285,7 @@ export default function OnboardingScreen() {
                 value={upiId}
                 onChangeText={setUpiId}
                 placeholder="e.g. parth@paytm"
-                placeholderTextColor={Colors.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
               />
             </View>
@@ -294,7 +297,7 @@ export default function OnboardingScreen() {
                   style={[styles.prefBtn, paymentPref === "upi" && styles.prefBtnActive]}
                   onPress={() => setPaymentPref("upi")}
                 >
-                  <CreditCard size={16} color={paymentPref === "upi" ? Colors.primaryForeground : Colors.foreground} />
+                  <CreditCard size={16} color={paymentPref === "upi" ? colors.primaryForeground : colors.foreground} />
                   <Text style={[styles.prefText, paymentPref === "upi" && styles.prefTextActive]}>UPI</Text>
                 </Pressable>
                 <Pressable
@@ -308,7 +311,7 @@ export default function OnboardingScreen() {
 
             {errorMsg && (
               <View style={styles.errorAlert}>
-                <AlertCircle size={16} color={Colors.destructive} style={{ marginRight: 6 }} />
+                <AlertCircle size={16} color={colors.destructive} style={{ marginRight: 6 }} />
                 <Text style={styles.errorText}>{errorMsg}</Text>
               </View>
             )}
@@ -319,11 +322,11 @@ export default function OnboardingScreen() {
               disabled={saving || checkingUsername}
             >
               {saving ? (
-                <ActivityIndicator color={Colors.primaryForeground} />
+                <ActivityIndicator color={colors.primaryForeground} />
               ) : (
                 <>
                   <Text style={styles.submitText}>Confirm & Start splitting</Text>
-                  <ChevronRight size={18} color={Colors.primaryForeground} />
+                  <ChevronRight size={18} color={colors.primaryForeground} />
                 </>
               )}
             </Pressable>
@@ -334,143 +337,145 @@ export default function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: Colors.background,
-    padding: 20,
-    paddingTop: 50,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  headerSubtitle: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
-    textTransform: "uppercase",
-  },
-  logoutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  logoutText: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.destructive,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  card: {
-    backgroundColor: Colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 20,
-  },
-  title: {
-    fontSize: Typography.fontSize.lg,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.mutedForeground,
-    marginBottom: 20,
-    lineHeight: 18,
-  },
-  form: {
-    gap: 16,
-  },
-  inputContainer: {
-    gap: 6,
-  },
-  label: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
-  },
-  input: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
-  },
-  checkText: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.primary,
-    fontWeight: Typography.fontWeight.bold,
-  },
-  hint: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: Typography.fontWeight.medium,
-  },
-  prefRow: {
-    flexDirection: "row",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    padding: 3,
-    backgroundColor: Colors.background,
-  },
-  prefBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  prefBtnActive: {
-    backgroundColor: Colors.primary,
-  },
-  prefText: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
-  },
-  prefTextActive: {
-    color: Colors.primaryForeground,
-  },
-  errorAlert: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fdf2f2",
-    borderColor: "#fde8e8",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-  },
-  errorText: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.destructive,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  submitBtn: {
-    backgroundColor: Colors.primary,
-    height: 48,
-    borderRadius: 10,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-  },
-  submitText: {
-    color: Colors.primaryForeground,
-    fontSize: Typography.fontSize.base,
-    fontWeight: Typography.fontWeight.bold,
-  },
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      flexGrow: 1,
+      backgroundColor: colors.background,
+      padding: 20,
+      paddingTop: 50,
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    headerSubtitle: {
+      fontSize: Typography.fontSize.xs,
+      fontFamily: Typography.fontFamily.mono,
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+    },
+    logoutButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    logoutText: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.destructive,
+      fontWeight: Typography.fontWeight.semibold,
+    },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+    },
+    title: {
+      fontSize: Typography.fontSize.lg,
+      fontWeight: Typography.fontWeight.bold,
+      color: colors.foreground,
+      marginBottom: 6,
+    },
+    subtitle: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.mutedForeground,
+      marginBottom: 20,
+      lineHeight: 18,
+    },
+    form: {
+      gap: 16,
+    },
+    inputContainer: {
+      gap: 6,
+    },
+    label: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.semibold,
+      color: colors.foreground,
+    },
+    input: {
+      height: 44,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      fontSize: Typography.fontSize.sm,
+      color: colors.foreground,
+      backgroundColor: colors.background,
+    },
+    checkText: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.primary,
+      fontWeight: Typography.fontWeight.bold,
+    },
+    hint: {
+      fontSize: Typography.fontSize.xs,
+      fontWeight: Typography.fontWeight.medium,
+    },
+    prefRow: {
+      flexDirection: "row",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 3,
+      backgroundColor: colors.background,
+    },
+    prefBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    prefBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    prefText: {
+      fontSize: Typography.fontSize.sm,
+      fontWeight: Typography.fontWeight.bold,
+      color: colors.foreground,
+    },
+    prefTextActive: {
+      color: colors.primaryForeground,
+    },
+    errorAlert: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.destructive + "15",
+      borderColor: colors.destructive + "30",
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 10,
+    },
+    errorText: {
+      fontSize: Typography.fontSize.xs,
+      color: colors.destructive,
+      fontWeight: Typography.fontWeight.semibold,
+    },
+    submitBtn: {
+      backgroundColor: colors.primary,
+      height: 48,
+      borderRadius: 10,
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 10,
+    },
+    submitText: {
+      color: colors.primaryForeground,
+      fontSize: Typography.fontSize.base,
+      fontWeight: Typography.fontWeight.bold,
+    },
+  });
+}

@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert, Platform } from "react-native";
+import React, { useState, useEffect, useMemo } from "react";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { useApp } from "../../lib/AppContext";
-import { db } from "../../lib/firebase";
-import { doc, updateDoc, deleteDoc, collection, getDocs, query, where } from "firebase/firestore";
-import { Colors } from "../../constants/colors";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { ArrowLeft, Trash2, Calendar, Play, Pause, AlertCircle } from "lucide-react-native";
+import { useTheme } from "../../lib/ThemeContext";
+import { useApp } from "../../lib/AppContext";
+import { db } from "../../lib/firebase";
+import { collection, query, where, getDocs, updateDoc, deleteDoc, doc } from "firebase/firestore";
 
 export default function SubscriptionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { subscriptions, groups } = useApp();
   const sub = subscriptions.find((s) => s.id === id);
 
@@ -43,7 +46,7 @@ export default function SubscriptionDetailScreen() {
   if (!sub) {
     return (
       <View style={styles.loadingContainer}>
-        <AlertCircle size={32} color={Colors.destructive} />
+        <AlertCircle size={32} color={colors.destructive} />
         <Text style={styles.notFoundText}>Subscription Not Found</Text>
         <Pressable style={styles.backLink} onPress={() => router.back()}>
           <Text style={styles.backLinkText}>Back</Text>
@@ -104,7 +107,7 @@ export default function SubscriptionDetailScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={20} color={Colors.foreground} />
+          <ArrowLeft size={20} color={colors.foreground} />
         </Pressable>
         <Text style={styles.headerTitle}>Subscription Details</Text>
       </View>
@@ -116,7 +119,7 @@ export default function SubscriptionDetailScreen() {
         <View style={styles.grid}>
           <View style={styles.gridRow}>
             <Text style={styles.label}>Status</Text>
-            <Text style={[styles.value, { color: sub.status === "active" ? Colors.success : Colors.mutedForeground }]}>
+            <Text style={[styles.value, { color: sub.status === "active" ? colors.success : colors.mutedForeground }]}>
               {sub.status.toUpperCase()}
             </Text>
           </View>
@@ -132,25 +135,28 @@ export default function SubscriptionDetailScreen() {
 
         <View style={styles.actions}>
           <Pressable
-            style={[styles.actionBtn, { backgroundColor: sub.status === "active" ? "#fef3c7" : "#d1fae5" }]}
+            style={[
+              styles.actionBtn,
+              { backgroundColor: sub.status === "active" ? (isDark ? "#3b2b1a" : "#fef3c7") : (isDark ? "#1a3a2b" : "#d1fae5") }
+            ]}
             onPress={toggleStatus}
           >
             {sub.status === "active" ? (
               <>
-                <Pause size={16} color="#b45309" />
-                <Text style={[styles.actionBtnText, { color: "#b45309" }]}>Pause Billing</Text>
+                <Pause size={16} color={isDark ? "#fbbf24" : "#b45309"} />
+                <Text style={[styles.actionBtnText, { color: isDark ? "#fbbf24" : "#b45309" }]}>Pause Billing</Text>
               </>
             ) : (
               <>
-                <Play size={16} color="#065f46" />
-                <Text style={[styles.actionBtnText, { color: "#065f46" }]}>Resume Billing</Text>
+                <Play size={16} color={isDark ? "#34d399" : "#065f46"} />
+                <Text style={[styles.actionBtnText, { color: isDark ? "#34d399" : "#065f46" }]}>Resume Billing</Text>
               </>
             )}
           </Pressable>
 
-          <Pressable style={[styles.actionBtn, { backgroundColor: "#fee2e2" }]} onPress={handleDelete}>
-            <Trash2 size={16} color={Colors.destructive} />
-            <Text style={[styles.actionBtnText, { color: Colors.destructive }]}>Delete</Text>
+          <Pressable style={[styles.actionBtn, { backgroundColor: isDark ? "#3b1a1a" : "#fee2e2" }]} onPress={handleDelete}>
+            <Trash2 size={16} color={colors.destructive} />
+            <Text style={[styles.actionBtnText, { color: colors.destructive }]}>Delete</Text>
           </Pressable>
         </View>
       </View>
@@ -159,7 +165,7 @@ export default function SubscriptionDetailScreen() {
       <Text style={styles.sectionTitle}>History of Auto-Logs</Text>
       <View style={styles.card}>
         {loadingHistory ? (
-          <ActivityIndicator color={Colors.primary} />
+          <ActivityIndicator color={colors.primary} />
         ) : history.length === 0 ? (
           <Text style={styles.emptyText}>No historical logs detected.</Text>
         ) : (
@@ -178,33 +184,39 @@ export default function SubscriptionDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     padding: 20,
     paddingTop: 45,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     flexGrow: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Colors.background,
-    gap: 12,
+    backgroundColor: colors.background,
+  },
+  notFoundContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: colors.background,
   },
   notFoundText: {
     fontSize: Typography.fontSize.base,
-    fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
+    marginVertical: 15,
   },
   backLink: {
     padding: 10,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
   },
   backLinkText: {
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: "bold",
   },
   header: {
@@ -217,35 +229,35 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: 20,
     marginBottom: 20,
   },
   subName: {
     fontSize: Typography.fontSize.lg,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
     textAlign: "center",
   },
   subAmount: {
     fontSize: Typography.fontSize.xl,
     fontWeight: "bold",
-    color: Colors.primary,
+    color: colors.primary,
     textAlign: "center",
     marginVertical: 10,
   },
@@ -253,7 +265,7 @@ const styles = StyleSheet.create({
     marginVertical: 15,
     gap: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     paddingTop: 15,
   },
   gridRow: {
@@ -262,12 +274,12 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
   },
   value: {
     fontSize: Typography.fontSize.sm,
-    fontWeight: "semibold",
-    color: Colors.foreground,
+    fontWeight: "600",
+    color: colors.foreground,
   },
   actions: {
     flexDirection: "row",
@@ -290,12 +302,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
     marginBottom: 10,
   },
   emptyText: {
     textAlign: "center",
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontSize: Typography.fontSize.xs,
     paddingVertical: 15,
   },
@@ -307,21 +319,21 @@ const styles = StyleSheet.create({
   },
   historyBorder: {
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
   },
   historyTitle: {
     fontSize: Typography.fontSize.sm,
-    fontWeight: "semibold",
-    color: Colors.foreground,
+    fontWeight: "600",
+    color: colors.foreground,
   },
   historyMeta: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
   },
   historyAmount: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
-});
+}); }

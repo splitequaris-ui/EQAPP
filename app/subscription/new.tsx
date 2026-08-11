@@ -1,14 +1,16 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, ActivityIndicator } from "react-native";
-import { useApp } from "../../lib/AppContext";
-import { db } from "../../lib/firebase";
-import { dbSetDoc } from "../../lib/firestoreQuery";
-import { Colors } from "../../constants/colors";
-import { Typography } from "../../constants/typography";
+import React, { useState, useMemo } from "react";
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
+import { AppColors } from "../../constants/colors";
+import { Typography } from "../../constants/typography";
 import { ArrowLeft, Check } from "lucide-react-native";
+import { useTheme } from "../../lib/ThemeContext";
+import { useApp } from "../../lib/AppContext";
+import { dbSetDoc } from "../../lib/firestoreQuery";
 
 export default function NewSubscriptionScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user, profile, groups } = useApp();
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -76,7 +78,7 @@ export default function NewSubscriptionScreen() {
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={20} color={Colors.foreground} />
+          <ArrowLeft size={20} color={colors.foreground} />
         </Pressable>
         <Text style={styles.headerTitle}>Add Subscription</Text>
       </View>
@@ -89,7 +91,7 @@ export default function NewSubscriptionScreen() {
             value={name}
             onChangeText={setName}
             placeholder="e.g. Netflix Premium"
-            placeholderTextColor={Colors.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
           />
         </View>
 
@@ -100,7 +102,7 @@ export default function NewSubscriptionScreen() {
             value={amount}
             onChangeText={setAmount}
             placeholder="e.g. 649"
-            placeholderTextColor={Colors.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
             keyboardType="numeric"
           />
         </View>
@@ -129,7 +131,7 @@ export default function NewSubscriptionScreen() {
             value={nextRenewalDate}
             onChangeText={setNextRenewalDate}
             placeholder="YYYY-MM-DD"
-            placeholderTextColor={Colors.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
           />
         </View>
 
@@ -177,7 +179,7 @@ export default function NewSubscriptionScreen() {
             value={notes}
             onChangeText={setNotes}
             placeholder="Optional billing details"
-            placeholderTextColor={Colors.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
             multiline
           />
         </View>
@@ -188,10 +190,10 @@ export default function NewSubscriptionScreen() {
           disabled={saving}
         >
           {saving ? (
-            <ActivityIndicator color={Colors.primaryForeground} />
+            <ActivityIndicator color={colors.primaryForeground} />
           ) : (
             <>
-              <Check size={18} color={Colors.primaryForeground} />
+              <Check size={18} color={colors.primaryForeground} />
               <Text style={styles.submitText}>Save Subscription</Text>
             </>
           )}
@@ -201,11 +203,11 @@ export default function NewSubscriptionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     padding: 20,
     paddingTop: 45,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     flexGrow: 1,
   },
   header: {
@@ -218,22 +220,22 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: 16,
     gap: 16,
   },
@@ -243,17 +245,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   input: {
     height: 40,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
+    color: colors.foreground,
+    backgroundColor: colors.background,
   },
   cycleRow: {
     flexDirection: "row",
@@ -262,23 +264,23 @@ const styles = StyleSheet.create({
   cycleBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingVertical: 8,
     alignItems: "center",
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   cycleBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   cycleBtnText: {
     fontSize: 10,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   cycleBtnTextActive: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
   },
   groupGrid: {
     flexDirection: "row",
@@ -287,26 +289,26 @@ const styles = StyleSheet.create({
   },
   groupBtn: {
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   groupBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   groupBtnText: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   groupBtnTextActive: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontWeight: "bold",
   },
   submitBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     height: 44,
     borderRadius: 8,
     flexDirection: "row",
@@ -316,8 +318,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   submitText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
   },
-});
+}); }

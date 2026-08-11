@@ -5,6 +5,10 @@ import { auth, db } from "./firebase";
 import { Group, Expense, Settlement, Activity, UserProfile, Subscription } from "../types";
 import { dbSetDoc, dbGetDoc, dbUpdateDoc } from "./firestoreQuery";
 import { router } from "expo-router";
+import { Alert, Modal, View, Text, Pressable, StyleSheet } from "react-native";
+import { useTheme } from "./ThemeContext";
+import { AppColors, Colors } from "../constants/colors";
+import { Typography } from "../constants/typography";
 
 interface AppContextType {
   user: FirebaseUser | null;
@@ -40,6 +44,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [globalAlert, setGlobalAlert] = useState<any | null>(null);
+
+  useEffect(() => {
+    Alert.alert = (title, message, buttons) => {
+      setGlobalAlert({ title, message, buttons });
+    };
+  }, []);
   const [groups, setGroups] = useState<Group[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -69,12 +80,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setTheme = (_t: "light") => {};
 
   const navigate = (path: string, params?: Record<string, any>) => {
-    if (path === "/groups/[id]" && params?.id) {
+    if ((path === "/groups/[id]" || path === "/group/[id]") && params?.id) {
       setActiveGroupId(params.id);
       router.push(`/group/${params.id}`);
-    } else if (path === "/subscriptions/[id]" && params?.id) {
+    } else if ((path === "/subscriptions/[id]" || path === "/subscription/[id]") && params?.id) {
       router.push(`/subscription/${params.id}`);
-    } else if (path === "/subscriptions/new") {
+    } else if (path === "/subscriptions/new" || path === "/subscription/new") {
       router.push("/subscription/new");
     } else if (path === "/login") {
       router.replace("/(auth)/login");
@@ -501,6 +512,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }}
     >
       {children}
+      {globalAlert && (
+        <CustomAlertModal
+          visible={!!globalAlert}
+          alert={globalAlert}
+          onClose={() => setGlobalAlert(null)}
+        />
+      )}
     </AppContext.Provider>
   );
 };
@@ -512,3 +530,154 @@ export const useApp = () => {
   }
   return context;
 };
+
+function CustomAlertModal({ visible, alert, onClose }: { visible: boolean; alert: any; onClose: () => void }) {
+  const { colors } = useTheme();
+  const alertStyles = React.useMemo(() => createAlertStyles(colors), [colors]);
+  const { title, message, buttons } = alert;
+
+  const handleButtonPress = (btnOnPress?: () => void) => {
+    onClose();
+    if (btnOnPress) {
+      btnOnPress();
+    }
+  };
+
+  const renderButtons = () => {
+    if (!buttons || buttons.length === 0) {
+      return (
+        <Pressable style={alertStyles.alertBtnPrimary} onPress={() => handleButtonPress()}>
+          <Text style={alertStyles.alertBtnTextPrimary}>OK</Text>
+        </Pressable>
+      );
+    }
+
+    return (
+      <View style={buttons.length > 2 ? alertStyles.btnCol : alertStyles.btnRow}>
+        {buttons.map((btn: any, idx: number) => {
+          const isCancel = btn.style === "cancel";
+          const isDestructive = btn.style === "destructive";
+          
+          let btnStyle = alertStyles.alertBtnPrimary;
+          let textStyle = alertStyles.alertBtnTextPrimary;
+          
+          if (isCancel) {
+            btnStyle = alertStyles.alertBtnSecondary;
+            textStyle = alertStyles.alertBtnTextSecondary;
+          } else if (isDestructive) {
+            btnStyle = alertStyles.alertBtnDestructive;
+            textStyle = alertStyles.alertBtnTextPrimary;
+          }
+          
+          return (
+            <Pressable 
+              key={idx} 
+              style={[btnStyle, { flex: buttons.length > 2 ? undefined : 1 }]} 
+              onPress={() => handleButtonPress(btn.onPress)}
+            >
+              <Text style={textStyle}>{btn.text}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={alertStyles.alertOverlay}>
+        <View style={alertStyles.alertContainer}>
+          {title ? <Text style={alertStyles.alertTitle}>{title}</Text> : null}
+          {message ? <Text style={alertStyles.alertMessage}>{message}</Text> : null}
+          {renderButtons()}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function createAlertStyles(colors: AppColors) {
+  return StyleSheet.create({
+    alertOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.65)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+    alertContainer: {
+      backgroundColor: colors.card,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      padding: 24,
+      width: "100%",
+      maxWidth: 320,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.25,
+      shadowRadius: 20,
+      elevation: 10,
+    },
+    alertTitle: {
+      fontSize: Typography.fontSize.lg,
+      fontWeight: "bold",
+      color: colors.foreground,
+      marginBottom: 8,
+      textAlign: "center",
+    },
+    alertMessage: {
+      fontSize: Typography.fontSize.sm,
+      color: colors.mutedForeground,
+      lineHeight: 20,
+      marginBottom: 24,
+      textAlign: "center",
+    },
+    btnRow: {
+      flexDirection: "row",
+      gap: 12,
+      width: "100%",
+    },
+    btnCol: {
+      flexDirection: "column",
+      gap: 8,
+      width: "100%",
+    },
+    alertBtnPrimary: {
+      backgroundColor: colors.primary,
+      height: 48,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 16,
+    },
+    alertBtnTextPrimary: {
+      color: colors.primaryForeground,
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+    },
+    alertBtnSecondary: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      height: 48,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 16,
+    },
+    alertBtnTextSecondary: {
+      color: colors.foreground,
+      fontSize: Typography.fontSize.sm,
+      fontWeight: "bold",
+    },
+    alertBtnDestructive: {
+      backgroundColor: colors.destructive,
+      height: 48,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 16,
+    },
+  });
+}

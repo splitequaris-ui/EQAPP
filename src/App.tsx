@@ -49,30 +49,36 @@ const MainRouter: React.FC = () => {
     );
   }
 
-  if (currentRoute.path === "/about-us") return <AboutUsPage />;
-  if (currentRoute.path === "/features") return <FeaturesPage />;
-  if (currentRoute.path === "/sources") return <SourcesPage />;
-  if (currentRoute.path === "/about") return <AboutPage />;
-  if (currentRoute.path === "/blog") return <BlogPage />;
-  if (currentRoute.path === "/careers") return <CareersPage />;
-  if (currentRoute.path === "/help") return <HelpPage />;
-  if (currentRoute.path === "/contact") return <ContactPage />;
-  if (currentRoute.path === "/status") return <StatusPage />;
-  if (currentRoute.path === "/privacy") return <PrivacyPage />;
-  if (currentRoute.path === "/terms") return <TermsPage />;
-  if (currentRoute.path === "/reporters") return <ReportersPage />;
+  const wrapPage = (component: React.ReactNode) => (
+    <div key={currentRoute.path} className="animate-page-enter w-full h-full">
+      {component}
+    </div>
+  );
+
+  if (currentRoute.path === "/about-us") return wrapPage(<AboutUsPage />);
+  if (currentRoute.path === "/features") return wrapPage(<FeaturesPage />);
+  if (currentRoute.path === "/sources") return wrapPage(<SourcesPage />);
+  if (currentRoute.path === "/about") return wrapPage(<AboutPage />);
+  if (currentRoute.path === "/blog") return wrapPage(<BlogPage />);
+  if (currentRoute.path === "/careers") return wrapPage(<CareersPage />);
+  if (currentRoute.path === "/help") return wrapPage(<HelpPage />);
+  if (currentRoute.path === "/contact") return wrapPage(<ContactPage />);
+  if (currentRoute.path === "/status") return wrapPage(<StatusPage />);
+  if (currentRoute.path === "/privacy") return wrapPage(<PrivacyPage />);
+  if (currentRoute.path === "/terms") return wrapPage(<TermsPage />);
+  if (currentRoute.path === "/reporters") return wrapPage(<ReportersPage />);
 
   // Prevent accessing protected views if not logged in
   if (!user) {
     if (currentRoute.path === "/login" || currentRoute.path === "/signup") {
-      return <LoginPage mode={currentRoute.path === "/login" ? "signin" : "signup"} />;
+      return wrapPage(<LoginPage mode={currentRoute.path === "/login" ? "signin" : "signup"} />);
     }
-    return <LandingPage />;
+    return wrapPage(<LandingPage />);
   }
 
   // Redirect to Onboarding if profile is not completed or missing
   if (!profile || !profile.isOnboarded) {
-    return <Onboarding />;
+    return wrapPage(<Onboarding />);
   }
 
   return (
@@ -80,18 +86,20 @@ const MainRouter: React.FC = () => {
       <Navbar />
 
       <main className="min-h-screen flex-1 px-4 py-6 pb-16 md:h-screen md:overflow-y-auto md:px-8 md:pb-8">
-        {(currentRoute.path === "/" || currentRoute.path === "/dashboard" || currentRoute.path === "/login" || currentRoute.path === "/signup") && <Dashboard />}
-        {currentRoute.path === "/groups" && <Groups />}
-        {currentRoute.path === "/groups/[id]" && <GroupDetail />}
-        {currentRoute.path === "/subscriptions" && <Subscriptions />}
-        {currentRoute.path === "/subscriptions/new" && <AddSubscription />}
-        {currentRoute.path === "/subscriptions/[id]" && <SubscriptionDetail />}
-        {currentRoute.path === "/money" && <MoneyManagement />}
-        {currentRoute.path === "/settlements" && <Settlements />}
-        {currentRoute.path === "/network" && <NetworkHub />}
-        {currentRoute.path === "/reports" && <Reports />}
-        {currentRoute.path === "/profile" && <Profile />}
-        {currentRoute.path === "/settings" && <Settings />}
+        <div key={currentRoute.path} className="animate-page-enter h-full w-full">
+          {(currentRoute.path === "/" || currentRoute.path === "/dashboard" || currentRoute.path === "/login" || currentRoute.path === "/signup") && <Dashboard />}
+          {currentRoute.path === "/groups" && <Groups />}
+          {currentRoute.path === "/groups/[id]" && <GroupDetail />}
+          {currentRoute.path === "/subscriptions" && <Subscriptions />}
+          {currentRoute.path === "/subscriptions/new" && <AddSubscription />}
+          {currentRoute.path === "/subscriptions/[id]" && <SubscriptionDetail />}
+          {currentRoute.path === "/money" && <MoneyManagement />}
+          {currentRoute.path === "/settlements" && <Settlements />}
+          {currentRoute.path === "/network" && <NetworkHub />}
+          {currentRoute.path === "/reports" && <Reports />}
+          {currentRoute.path === "/profile" && <Profile />}
+          {currentRoute.path === "/settings" && <Settings />}
+        </div>
       </main>
 
       {/* Wallet assistant — available on every authenticated page */}

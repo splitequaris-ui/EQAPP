@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Modal, Image, Linking, Platform } from "react-native";
+﻿import React, { useState, useEffect, useMemo, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Modal, Image, Linking, Platform, KeyboardAvoidingView, Animated } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useApp } from "../../lib/AppContext";
 import { db } from "../../lib/firebase";
 import { writeBatch, doc } from "firebase/firestore";
-import { dbSetDoc, dbDeleteDoc, dbGetDoc } from "../../lib/firestoreQuery";
+import { dbSetDoc, dbDeleteDoc, dbGetDoc, dbGetDocsInBatches } from "../../lib/firestoreQuery";
 import { calculateBalances, generateSettlementSuggestions } from "../../lib/settleEngine";
-import { Colors } from "../../constants/colors";
+import { useTheme } from "../../lib/ThemeContext";
+import { AppColors } from "../../constants/colors";
 import { Typography } from "../../constants/typography";
 import { 
   ArrowLeft, 
@@ -22,10 +23,15 @@ import {
   X,
   PieChart
 } from "lucide-react-native";
-import QRCode from "qrcode";
+import QRCode from "react-native-qrcode-svg";
+
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { 
     user, 
     profile, 
@@ -36,6 +42,28 @@ export default function GroupDetailScreen() {
     setActiveGroupId
   } = useApp();
 
+  const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "sett" | "timeline" | "analytics">("expenses");
+  
+  const subTabFadeAnim = useRef(new Animated.Value(0)).current;
+  const subTabTranslateYAnim = useRef(new Animated.Value(6)).current;
+
+  useEffect(() => {
+    subTabFadeAnim.setValue(0);
+    subTabTranslateYAnim.setValue(6);
+    Animated.parallel([
+      Animated.timing(subTabFadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(subTabTranslateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [activeTab]);
+
   useEffect(() => {
     if (id) {
       setActiveGroupId(id);
@@ -45,8 +73,6 @@ export default function GroupDetailScreen() {
     };
   }, [id]);
 
-  const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "sett" | "timeline" | "analytics">("expenses");
-  
   // Add expense state
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [expTitle, setExpTitle] = useState("");
@@ -56,12 +82,48 @@ export default function GroupDetailScreen() {
   const [expDate, setExpDate] = useState(() => new Date().toISOString().substring(0, 10));
   const [savingExpense, setSavingExpense] = useState(false);
 
-  // Pay QR modal state
+  // Pay QR & Delete modal state
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showEndSplitModal, setShowEndSplitModal] = useState(false);
+  const [showDeleteGroupModal, setShowDeleteGroupModal] = useState(false);
+  const [targetDeleteExpense, setTargetDeleteExpense] = useState<{ id: string; title: string } | null>(null);
   const [selectedRepayment, setSelectedRepayment] = useState<any>(null);
   const [recipientProfile, setRecipientProfile] = useState<any | null>(null);
   const [fetchingRecipient, setFetchingRecipient] = useState(false);
-  const [upiQrUrl, setUpiQrUrl] = useState("");
+  const [memberProfiles, setMemberProfiles] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    if (!activeGroup?.members || activeGroup.members.length === 0) return;
+    const fetchProfiles = async () => {
+      try {
+        const [usersList, profilesList] = await Promise.all([
+          dbGetDocsInBatches("users", "uid", activeGroup.members),
+          dbGetDocsInBatches("profiles", "uid", activeGroup.members)
+        ]);
+
+        const map: Record<string, any> = {};
+        (profilesList || []).forEach((p: any) => {
+          if (p?.uid) map[p.uid] = p;
+        });
+        (usersList || []).forEach((u: any) => {
+          if (u?.uid) {
+            map[u.uid] = { ...map[u.uid], ...u };
+          }
+        });
+        setMemberProfiles(map);
+      } catch (err) {
+        console.error("Failed to load member profiles", err);
+      }
+    };
+    fetchProfiles();
+  }, [activeGroup?.members]);
+
+  const getAvatarUrl = (mId: string, mName: string) => {
+    const prof = memberProfiles[mId];
+    const photo = prof?.photoURL || prof?.avatarUrl || prof?.photo || prof?.avatar;
+    if (photo && photo.trim().length > 0) return photo;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(mName)}&background=3e8e7e&color=fff&bold=true`;
+  };
 
   const groupBalances = useMemo(() => {
     if (!activeGroup) return {};
@@ -72,6 +134,12 @@ export default function GroupDetailScreen() {
     if (!activeGroup || !id) return [];
     return generateSettlementSuggestions(id, groupBalances);
   }, [activeGroup, groupBalances, id]);
+
+  const totalSpent = useMemo(() => {
+    return activeGroupExpenses
+      .filter((e) => e.category !== "settlement")
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [activeGroupExpenses]);
 
   const handleAddExpense = async () => {
     if (!user || !profile || !activeGroup || !id) return;
@@ -133,35 +201,7 @@ export default function GroupDetailScreen() {
   };
 
   const handleDeleteExpense = (expId: string, title: string) => {
-    const onDelete = async () => {
-      if (!id) return;
-      try {
-        await dbDeleteDoc(`groups/${id}/expenses`, expId);
-      } catch (err) {
-        console.error(err);
-        Alert.alert("Error", "Failed to delete expense.");
-      }
-    };
-
-    if (Platform.OS === "web") {
-      const confirmed = window.confirm(`Delete Expense\n\nAre you sure you want to delete "${title}"?`);
-      if (confirmed) {
-        onDelete();
-      }
-    } else {
-      Alert.alert(
-        "Delete Expense",
-        `Are you sure you want to delete "${title}"?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { 
-            text: "Delete", 
-            style: "destructive",
-            onPress: onDelete
-          }
-        ]
-      );
-    }
+    setTargetDeleteExpense({ id: expId, title });
   };
 
   const handleSettleSuggestion = async (sugg: any) => {
@@ -254,20 +294,8 @@ export default function GroupDetailScreen() {
         });
     } else {
       setRecipientProfile(null);
-      setUpiQrUrl("");
     }
   }, [selectedRepayment]);
-
-  useEffect(() => {
-    if (selectedRepayment && activeGroup) {
-      const upiId = recipientProfile?.upiId || "repay@upi";
-      const name = activeGroup.memberNames[selectedRepayment.toUid] || "Member";
-      const url = getUpiUrl(upiId, name, selectedRepayment.amount);
-      QRCode.toDataURL(url, { margin: 1, width: 300 })
-        .then((dataUrl) => setUpiQrUrl(dataUrl))
-        .catch((err) => console.error("Error generating UPI QR:", err));
-    }
-  }, [selectedRepayment, recipientProfile, activeGroup]);
 
   const launchUpiApp = async () => {
     if (!selectedRepayment || !activeGroup) return;
@@ -300,73 +328,207 @@ export default function GroupDetailScreen() {
   if (!activeGroup) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const budgetCap = activeGroup?.budget || 50000;
+  const utilizationPercent = budgetCap > 0 ? Math.round((totalSpent / budgetCap) * 100) : 0;
+  const isOverBudget = totalSpent > budgetCap;
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={20} color={Colors.foreground} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.groupName}>{activeGroup.name}</Text>
-          <Text style={styles.groupDesc} numberOfLines={1}>{activeGroup.description || "Active split pool"}</Text>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}>
+      <ScrollView contentContainerStyle={styles.scroll} stickyHeaderIndices={[]}>
+        {/* Navigation & Header */}
+        <View style={styles.topNavRow}>
+          <Pressable onPress={() => router.push("/(tabs)/groups")} style={styles.allGroupsBtn}>
+            <ArrowLeft size={16} color={colors.foreground} />
+            <Text style={styles.allGroupsText}>ALL GROUPS</Text>
+          </Pressable>
         </View>
-      </View>
 
-      {/* Tabs */}
-      <View style={styles.tabsRow}>
-        {(["expenses", "balances", "sett", "timeline", "analytics"] as const).map((tab) => {
-          const active = activeTab === tab;
-          const labels = { expenses: "Expenses", balances: "Balances", sett: "Settle Up", timeline: "Timeline", analytics: "Analytics" };
-          return (
-            <Pressable
-              key={tab}
-              style={[styles.tabItem, active && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{labels[tab]}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {activeTab === "expenses" && (
-          <View style={styles.content}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Expenses list</Text>
-              <Pressable style={styles.addBtn} onPress={() => setShowAddExpense(true)}>
-                <Plus size={16} color={Colors.primaryForeground} />
-                <Text style={styles.addBtnText}>Add Expense</Text>
-              </Pressable>
+        {/* Group Name & Status */}
+        <View style={styles.groupHeaderBox}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Text style={styles.groupMainTitle}>{activeGroup.name}</Text>
+            <View style={styles.activePillBadge}>
+              <Text style={styles.activePillText}>ACTIVE</Text>
             </View>
+          </View>
+          {activeGroup.description ? (
+            <Text style={styles.groupMainSub}>{activeGroup.description}</Text>
+          ) : null}
 
-            {activeGroupExpenses.length === 0 ? (
-              <Text style={styles.emptyText}>No expenses logged in this group.</Text>
-            ) : (
-              activeGroupExpenses.map((item) => {
-                const paidByLabel = activeGroup.memberNames[item.paidBy] || "Someone";
+          {/* Action Buttons */}
+          <View style={styles.groupActionsRow}>
+            <Pressable style={styles.endSplitBtn} onPress={() => setShowEndSplitModal(true)}>
+              <Text style={styles.endSplitText}>END SPLIT</Text>
+            </Pressable>
+            
+            <Pressable 
+              style={styles.deleteGroupBtn} 
+              onPress={() => setShowDeleteGroupModal(true)}
+            >
+              <Text style={styles.deleteGroupText}>DELETE GROUP</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Group Budget Insights Overview Card (Screenshot #1) */}
+        <View style={styles.budgetInsightsCard}>
+          <View style={styles.budgetCardHeaderRow}>
+            <Text style={styles.monoCardLabel}>MEMBERS ({activeGroup.members.length})</Text>
+            
+            {/* Overlapping Member Avatars Stack */}
+            <View style={styles.avatarStackRow}>
+              {activeGroup.members.slice(0, 5).map((mId, i) => {
+                const mName = activeGroup.memberNames[mId] || "User";
+                const avatarUri = getAvatarUrl(mId, mName);
                 return (
-                  <View key={item.id} style={styles.expenseCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.expTitle}>{item.title}</Text>
-                      <Text style={styles.expMeta}>Paid by {paidByLabel} • {item.date}</Text>
-                      <Text style={styles.expCategory}>{item.category.toUpperCase()}</Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end", gap: 6 }}>
-                      <Text style={styles.expAmount}>₹{item.amount}</Text>
-                    </View>
+                  <View key={mId} style={[styles.stackAvatarCircle, { zIndex: 10 - i, marginLeft: i > 0 ? -10 : 0 }]}>
+                    <Image source={{ uri: avatarUri }} style={{ width: 30, height: 30, borderRadius: 15 }} />
                   </View>
                 );
-              })
-            )}
+              })}
+            </View>
           </View>
-        )}
+
+          <View style={styles.cardDividerLine} />
+
+          {/* Budget Spend Row */}
+          <View style={styles.budgetStatsRow}>
+            <Text style={styles.monoCardLabel}>BUDGET SPENT:</Text>
+            <Text 
+              style={[styles.budgetAmountVal, isOverBudget && { color: colors.destructive }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.65}
+            >
+              ₹{totalSpent.toLocaleString("en-IN")} / {utilizationPercent}% ₹{budgetCap.toLocaleString("en-IN")}
+            </Text>
+          </View>
+
+          {/* Progress Bar */}
+          <View style={styles.progressBarWrapper}>
+            <View 
+              style={[
+                styles.progressBarFillBar, 
+                { width: `${Math.min(utilizationPercent, 100)}%` },
+                isOverBudget ? { backgroundColor: colors.destructive } : { backgroundColor: colors.success }
+              ]} 
+            />
+          </View>
+
+          {/* Status Warning */}
+          <View style={styles.budgetStatusRow}>
+            <Text style={[styles.budgetStatusText, isOverBudget && { color: colors.destructive }]}>
+              {isOverBudget ? "⚠️ OVER BUDGET LIMIT" : "✓ WITHIN BUDGET LIMIT"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Group Total Spend Box */}
+        <View style={styles.totalSpendCard}>
+          <Text style={styles.monoCardLabel}>GROUP TOTAL SPEND</Text>
+          <Text 
+            style={styles.totalSpendAmountText}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.65}
+          >
+            ₹{totalSpent.toLocaleString("en-IN")}
+          </Text>
+        </View>
+
+        {/* Tabs Row – horizontal scroll so tabs never clip */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScrollWrapper}
+          contentContainerStyle={styles.tabsRow}
+        >
+          {(["expenses", "balances", "sett", "timeline", "analytics"] as const).map((tab) => {
+            const active = activeTab === tab;
+            const labels = { expenses: "Expenses", balances: "Balances", sett: "Settle Up", timeline: "Timeline", analytics: "Analytics" };
+            return (
+              <Pressable
+                key={tab}
+                style={[styles.tabItem, active && styles.tabItemActive]}
+                onPress={() => setActiveTab(tab)}
+              >
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>{labels[tab]}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <Animated.View style={{ opacity: subTabFadeAnim, transform: [{ translateY: subTabTranslateYAnim }] }}>
+          {activeTab === "expenses" && (
+            <View style={styles.content}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Expenses list</Text>
+                <Pressable style={styles.addBtn} onPress={() => setShowAddExpense(true)}>
+                  <Plus size={16} color={colors.primaryForeground} />
+                  <Text style={styles.addBtnText}>Add Expense</Text>
+                </Pressable>
+              </View>
+
+              {activeGroupExpenses.length === 0 ? (
+                <Text style={styles.emptyText}>No expenses logged in this group.</Text>
+              ) : (
+                activeGroupExpenses.map((item) => {
+                  const paidByLabel = activeGroup.memberNames[item.paidBy] || "Someone";
+                  const isSettlement = item.category === "settlement" || item.title.toLowerCase().includes("settle");
+                  const cleanTitle = isSettlement
+                    ? item.title.replace(/^Settled up \([^)]+\):\s*/i, "Settlement: ")
+                    : item.title;
+
+                  return (
+                    <View key={item.id} style={styles.cleanExpenseCard}>
+                      <View style={styles.cardHeaderRow}>
+                        <Text style={styles.cleanExpTitle} numberOfLines={1}>
+                          {cleanTitle}
+                        </Text>
+                        <Text 
+                          style={styles.cleanExpAmount} 
+                          numberOfLines={1} 
+                          adjustsFontSizeToFit={true} 
+                          minimumFontScale={0.7}
+                        >
+                          ₹{item.amount ? item.amount.toLocaleString("en-IN") : "0"}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.cleanExpMeta}>
+                        Paid by {paidByLabel} • {item.date}
+                      </Text>
+
+                      <View style={styles.cardFooterRow}>
+                        {isSettlement ? (
+                          <View style={styles.settlementPill}>
+                            <Text style={styles.settlementPillText}>SETTLEMENT</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.categoryPill}>
+                            <Text style={styles.categoryPillText}>{(item.category || "General").toUpperCase()}</Text>
+                          </View>
+                        )}
+
+                        <Pressable 
+                          onPress={() => handleDeleteExpense(item.id, item.title)}
+                          style={styles.cardDeleteBtn}
+                          hitSlop={8}
+                        >
+                          <Trash2 size={14} color={colors.mutedForeground} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
 
         {activeTab === "balances" && (
           <View style={styles.content}>
@@ -378,7 +540,7 @@ export default function GroupDetailScreen() {
                 return (
                   <View key={memberId} style={styles.balanceRow}>
                     <Text style={styles.balanceMember}>{name}</Text>
-                    <Text style={[styles.balanceVal, { color: bal >= 0 ? Colors.success : Colors.destructive }]}>
+                    <Text style={[styles.balanceVal, { color: bal >= 0 ? colors.success : colors.destructive }]}>
                       {bal >= 0 ? `+₹${bal}` : `-₹${Math.abs(bal)}`}
                     </Text>
                   </View>
@@ -467,7 +629,7 @@ export default function GroupDetailScreen() {
         {activeTab === "analytics" && (
           <View style={styles.content}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <PieChart size={20} color={Colors.primary} />
+              <PieChart size={20} color={colors.primary} />
               <Text style={styles.sectionTitle}>Group Analytics</Text>
             </View>
             {activeGroupExpenses.filter(e => e.category !== "settlement").length === 0 ? (
@@ -503,16 +665,20 @@ export default function GroupDetailScreen() {
             )}
           </View>
         )}
+        </Animated.View>
       </ScrollView>
 
       {/* Add Expense Modal */}
       <Modal visible={showAddExpense} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Log Expense</Text>
               <Pressable onPress={() => setShowAddExpense(false)}>
-                <X size={20} color={Colors.foreground} />
+                <X size={20} color={colors.foreground} />
               </Pressable>
             </View>
 
@@ -524,7 +690,7 @@ export default function GroupDetailScreen() {
                   value={expTitle}
                   onChangeText={setExpTitle}
                   placeholder="e.g. Dinner at Taj"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                 />
               </View>
 
@@ -535,7 +701,7 @@ export default function GroupDetailScreen() {
                   value={expAmount}
                   onChangeText={setExpAmount}
                   placeholder="0.00"
-                  placeholderTextColor={Colors.mutedForeground}
+                  placeholderTextColor={colors.mutedForeground}
                   keyboardType="numeric"
                 />
               </View>
@@ -563,14 +729,14 @@ export default function GroupDetailScreen() {
                 disabled={savingExpense}
               >
                 {savingExpense ? (
-                  <ActivityIndicator color={Colors.primaryForeground} />
+                  <ActivityIndicator color={colors.primaryForeground} />
                 ) : (
                   <Text style={styles.submitText}>Save & Split equally</Text>
                 )}
               </Pressable>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* UPI QR Payment Modal */}
@@ -580,7 +746,7 @@ export default function GroupDetailScreen() {
             <View style={styles.qrHeader}>
               <Text style={styles.qrTitle}>Scan BHIM UPI repricement</Text>
               <Pressable onPress={() => setShowPayModal(false)}>
-                <X size={20} color={Colors.foreground} />
+                <X size={20} color={colors.foreground} />
               </Pressable>
             </View>
 
@@ -598,15 +764,20 @@ export default function GroupDetailScreen() {
                 
                 {fetchingRecipient ? (
                   <View style={{ height: 180, justifyContent: "center" }}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <ActivityIndicator size="large" color={colors.primary} />
                   </View>
-                ) : (upiQrUrl && recipientProfile?.upiId) ? (
+                ) : (recipientProfile?.upiId) ? (
                   <View style={styles.qrBoxWrapper}>
-                    <Image source={{ uri: upiQrUrl }} style={styles.qrImg as any} />
+                    <QRCode
+                      value={getUpiUrl(recipientProfile.upiId, activeGroup.memberNames[selectedRepayment.toUid] || "Member", selectedRepayment.amount)}
+                      size={180}
+                      color={colors.foreground}
+                      backgroundColor={colors.card}
+                    />
                   </View>
                 ) : (
-                  <View style={{ height: 120, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: Colors.border, borderRadius: 14, width: "100%", padding: 12, backgroundColor: Colors.background }}>
-                    <Text style={{ fontSize: 11, color: Colors.mutedForeground, textAlign: "center" }}>UPI QR Code not available. Recipient has not configured their UPI ID.</Text>
+                  <View style={{ height: 120, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 14, width: "100%", padding: 12, backgroundColor: colors.background }}>
+                    <Text style={{ fontSize: 11, color: colors.mutedForeground, textAlign: "center" }}>UPI QR Code not available. Recipient has not configured their UPI ID.</Text>
                   </View>
                 )}
 
@@ -643,21 +814,376 @@ export default function GroupDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* End Split Confirmation Modal (Screenshot #1) */}
+      <Modal visible={showEndSplitModal} animationType="fade" transparent>
+        <View style={styles.centeredModalOverlay}>
+          <View style={styles.endSplitCard}>
+            <Text style={styles.endSplitTitle}>End Split</Text>
+            <Text style={styles.endSplitSub}>Group ledger calculation finalized.</Text>
+
+            <View style={styles.endSplitBtnRow}>
+              <Pressable
+                style={styles.endSplitCancelBtn}
+                onPress={() => setShowEndSplitModal(false)}
+              >
+                <Text style={styles.endSplitCancelText}>CANCEL</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.endSplitConfirmBtn}
+                onPress={() => {
+                  setShowEndSplitModal(false);
+                  Alert.alert("Success", "Group ledger calculation finalized.");
+                }}
+              >
+                <Text style={styles.endSplitConfirmText}>CONFIRM</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Group Confirmation Modal */}
+      <Modal visible={showDeleteGroupModal} animationType="fade" transparent>
+        <View style={styles.centeredModalOverlay}>
+          <View style={styles.endSplitCard}>
+            <Text style={styles.endSplitTitle}>Delete Group?</Text>
+            <Text style={styles.endSplitSub}>
+              Are you sure you want to delete "{activeGroup.name}" permanently? This action cannot be undone.
+            </Text>
+
+            <View style={styles.endSplitBtnRow}>
+              <Pressable
+                style={styles.endSplitCancelBtn}
+                onPress={() => setShowDeleteGroupModal(false)}
+              >
+                <Text style={styles.endSplitCancelText}>CANCEL</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.endSplitConfirmBtn, { backgroundColor: colors.destructive }]}
+                onPress={async () => {
+                  setShowDeleteGroupModal(false);
+                  try {
+                    await dbDeleteDoc("groups", activeGroup.id);
+                    router.push("/(tabs)/groups");
+                  } catch (err) {
+                    console.error("Failed to delete group", err);
+                  }
+                }}
+              >
+                <Text style={[styles.endSplitConfirmText, { color: "#ffffff" }]}>DELETE</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Expense Confirmation Modal */}
+      <Modal visible={!!targetDeleteExpense} animationType="fade" transparent>
+        <View style={styles.centeredModalOverlay}>
+          <View style={styles.endSplitCard}>
+            <Text style={styles.endSplitTitle}>Delete Expense?</Text>
+            <Text style={styles.endSplitSub}>
+              Are you sure you want to delete "{targetDeleteExpense?.title}"?
+            </Text>
+
+            <View style={styles.endSplitBtnRow}>
+              <Pressable
+                style={styles.endSplitCancelBtn}
+                onPress={() => setTargetDeleteExpense(null)}
+              >
+                <Text style={styles.endSplitCancelText}>CANCEL</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.endSplitConfirmBtn, { backgroundColor: colors.destructive }]}
+                onPress={async () => {
+                  if (!targetDeleteExpense || !id) return;
+                  const expId = targetDeleteExpense.id;
+                  setTargetDeleteExpense(null);
+                  try {
+                    await dbDeleteDoc(`groups/${id}/expenses`, expId);
+                  } catch (err) {
+                    console.error("Failed to delete expense", err);
+                  }
+                }}
+              >
+                <Text style={[styles.endSplitConfirmText, { color: "#ffffff" }]}>DELETE</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: AppColors) { return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     paddingTop: 45,
+  },
+  topNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  allGroupsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.glassCard,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  allGroupsText: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.foreground,
+    fontWeight: "bold",
+    letterSpacing: 1,
+  },
+  groupHeaderBox: {
+    marginBottom: 16,
+  },
+  groupMainTitle: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: colors.foreground,
+    letterSpacing: -0.5,
+  },
+  activePillBadge: {
+    backgroundColor: "#d1f2e8",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  activePillText: {
+    color: "#126b53",
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+  },
+  groupMainSub: {
+    fontSize: Typography.fontSize.xs,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  groupActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  endSplitBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: colors.glassCard,
+  },
+  endSplitText: {
+    color: colors.destructive,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+  },
+  deleteGroupBtn: {
+    backgroundColor: colors.destructive,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  deleteGroupText: {
+    color: "#ffffff",
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+  },
+  budgetInsightsCard: {
+    backgroundColor: colors.glassCard,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  budgetCardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  monoCardLabel: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.mutedForeground,
+    fontWeight: "bold",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  avatarStackRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  stackAvatarCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.secondary,
+    borderWidth: 2,
+    borderColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  stackAvatarText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: colors.foreground,
+  },
+  cardDividerLine: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  },
+  budgetStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  budgetAmountVal: {
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+    color: colors.foreground,
+  },
+  progressBarWrapper: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+    marginVertical: 6,
+  },
+  progressBarFillBar: {
+    height: "100%",
+    borderRadius: 5,
+  },
+  budgetStatusRow: {
+    marginTop: 6,
+    alignItems: "flex-end",
+  },
+  budgetStatusText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.mono,
+    fontWeight: "bold",
+    color: colors.success,
+  },
+  totalSpendCard: {
+    backgroundColor: colors.glassCard,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  totalSpendAmountText: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: colors.foreground,
+    marginTop: 4,
+  },
+  endSplitCard: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 24,
+    width: "90%",
+    maxWidth: 360,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  endSplitTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: colors.foreground,
+    marginBottom: 8,
+  },
+  endSplitSub: {
+    fontSize: Typography.fontSize.sm,
+    color: colors.mutedForeground,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  endSplitBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  endSplitCancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  endSplitCancelText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.foreground,
+  },
+  endSplitConfirmBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  endSplitConfirmText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: "bold",
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.primaryForeground,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: "row",
@@ -670,51 +1196,63 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   groupName: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   groupDesc: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
+  },
+  tabsScrollWrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginHorizontal: -16,
+    marginTop: 12,
   },
   tabsRow: {
     flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    padding: 6,
+    paddingHorizontal: 12,
+    gap: 0,
+    alignItems: "center",
   },
   tabItem: {
-    flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: "center",
-    borderRadius: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+    marginBottom: -1,
   },
   tabItemActive: {
-    backgroundColor: Colors.primary,
+    borderBottomColor: colors.primary,
   },
   tabText: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.foreground,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.mutedForeground,
   },
   tabTextActive: {
-    color: Colors.primaryForeground,
+    color: colors.primary,
+    fontWeight: "700",
   },
   scroll: {
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 32,
   },
   content: {
-    gap: 16,
+    paddingHorizontal: 0,
+    paddingTop: 16,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -725,10 +1263,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   addBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -737,65 +1275,121 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   addBtnText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
   },
   emptyText: {
     textAlign: "center",
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontSize: Typography.fontSize.sm,
     paddingVertical: 30,
   },
-  expenseCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 14,
+  cleanExpenseCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 14,
+    borderColor: colors.border,
+    padding: 18,
+    marginBottom: 14,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  cardHeaderRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+    gap: 14,
+  },
+  cleanExpTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.foreground,
+    flex: 1,
+    lineHeight: 20,
+  },
+  cleanExpAmount: {
+    fontSize: 17,
+    fontWeight: "900",
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.foreground,
+  },
+  cleanExpMeta: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  cardFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-  },
-  expTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: "bold",
-    color: Colors.foreground,
-  },
-  expMeta: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
     marginTop: 2,
   },
-  expCategory: {
-    fontSize: 9,
-    fontFamily: Typography.fontFamily.mono,
-    color: Colors.primary,
-    marginTop: 6,
+  settlementPill: {
+    backgroundColor: "#d1f2e8",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
   },
-  expAmount: {
-    fontSize: Typography.fontSize.sm,
+  settlementPillText: {
+    fontSize: 10,
     fontWeight: "bold",
-    color: Colors.foreground,
+    fontFamily: Typography.fontFamily.mono,
+    color: "#065f46",
+    letterSpacing: 0.5,
+  },
+  categoryPill: {
+    backgroundColor: colors.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  categoryPillText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    fontFamily: Typography.fontFamily.mono,
+    color: colors.foreground,
+    letterSpacing: 0.5,
+  },
+  cardDeleteBtn: {
+    padding: 6,
+    borderRadius: 8,
   },
   balanceList: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
+    backgroundColor: colors.glassCard,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
+    borderColor: colors.glassBorder,
+    padding: 0,
+    overflow: "hidden",
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
   },
   balanceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
   },
   balanceMember: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "semibold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   balanceVal: {
     fontSize: Typography.fontSize.sm,
@@ -804,24 +1398,34 @@ const styles = StyleSheet.create({
   suggestionCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.glassBorder,
     borderRadius: 12,
     padding: 14,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   webSuggestionCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.glassCard,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.glassBorder,
     borderRadius: 18,
     padding: 16,
     marginBottom: 16,
+    shadowColor: "#2a2621",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   webSuggTag: {
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontWeight: "bold",
     letterSpacing: 1.2,
     marginBottom: 10,
@@ -836,30 +1440,30 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   webSuggIconText: {
     fontSize: 16,
-    color: Colors.foreground,
+    color: colors.foreground,
     fontWeight: "bold",
   },
   webSuggTitle: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   webSuggSubtitle: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
   },
   webSuggDivider: {
     height: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
     marginVertical: 14,
   },
   webSuggFooter: {
@@ -870,67 +1474,67 @@ const styles = StyleSheet.create({
   webSuggAmount: {
     fontSize: 16,
     fontWeight: "900",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   webSuggSubLabel: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 2,
   },
   webShowQrBtn: {
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   webShowQrText: {
     fontSize: 11,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   webMarkSettleBtn: {
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: Colors.foreground,
+    backgroundColor: colors.foreground,
   },
   webMarkSettleText: {
     fontSize: 11,
     fontWeight: "bold",
-    color: Colors.background,
+    color: colors.background,
   },
   repayInstantlyLabel: {
     fontSize: 10,
     fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontWeight: "bold",
     letterSpacing: 1.5,
   },
   repayDirectionText: {
     fontSize: Typography.fontSize.base,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
     marginVertical: 2,
   },
   repayLargeAmount: {
     fontSize: Typography.fontSize.xl,
     fontWeight: "900",
-    color: Colors.foreground,
+    color: colors.foreground,
     marginBottom: 8,
   },
   qrBoxWrapper: {
     padding: 12,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 16,
     marginBottom: 4,
   },
   qrInfoText: {
     fontSize: 11,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     textAlign: "center",
     lineHeight: 16,
     paddingHorizontal: 16,
@@ -938,13 +1542,13 @@ const styles = StyleSheet.create({
   recipientUpiLabel: {
     fontSize: 10,
     fontFamily: Typography.fontFamily.mono,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     fontWeight: "bold",
   },
   recipientUpiInput: {
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -953,38 +1557,38 @@ const styles = StyleSheet.create({
   recipientUpiText: {
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.mono,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   suggText: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   settleBtn: {
-    backgroundColor: Colors.success,
+    backgroundColor: colors.success,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   settleBtnText: {
-    color: Colors.successForeground,
+    color: colors.successForeground,
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
   },
   actRow: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 12,
   },
   actMsg: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.foreground,
+    color: colors.foreground,
     lineHeight: 16,
   },
   actDate: {
     fontSize: 9,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     marginTop: 4,
   },
   modalOverlay: {
@@ -992,8 +1596,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
+  centeredModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
   modalContent: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -1004,14 +1615,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
     paddingBottom: 12,
     marginBottom: 15,
   },
   modalTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   inputContainer: {
     gap: 4,
@@ -1019,17 +1630,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   input: {
     height: 40,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     fontSize: Typography.fontSize.sm,
-    color: Colors.foreground,
-    backgroundColor: Colors.background,
+    color: colors.foreground,
+    backgroundColor: colors.background,
   },
   categoryGrid: {
     flexDirection: "row",
@@ -1038,26 +1649,26 @@ const styles = StyleSheet.create({
   },
   catBtn: {
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   catBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   catBtnText: {
     fontSize: 10,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   catBtnTextActive: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
   },
   submitBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     height: 44,
     borderRadius: 8,
     alignItems: "center",
@@ -1065,7 +1676,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   submitText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
   },
@@ -1077,10 +1688,10 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   qrContent: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: 20,
     width: "100%",
     alignItems: "center",
@@ -1091,19 +1702,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border,
     paddingBottom: 10,
     marginBottom: 15,
   },
   qrTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   qrDesc: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "semibold",
-    color: Colors.foreground,
+    color: colors.foreground,
     textAlign: "center",
   },
   qrImg: {
@@ -1114,13 +1725,13 @@ const styles = StyleSheet.create({
   },
   qrInfo: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
     textAlign: "center",
     lineHeight: 16,
     marginBottom: 15,
   },
   confirmSettleBtn: {
-    backgroundColor: Colors.success,
+    backgroundColor: colors.success,
     height: 44,
     borderRadius: 8,
     alignItems: "center",
@@ -1128,12 +1739,12 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   confirmSettleText: {
-    color: Colors.successForeground,
+    color: colors.successForeground,
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
   },
   upiBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     height: 44,
     borderRadius: 8,
     alignItems: "center",
@@ -1142,22 +1753,22 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   upiBtnText: {
-    color: Colors.primaryForeground,
+    color: colors.primaryForeground,
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
   },
   analyticsCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: 16,
     marginBottom: 20,
   },
   analyticsSub: {
     fontSize: Typography.fontSize.sm,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
     marginBottom: 16,
   },
   analyticsRow: {
@@ -1171,24 +1782,24 @@ const styles = StyleSheet.create({
   analyticsLabel: {
     fontSize: Typography.fontSize.xs,
     fontWeight: "600",
-    color: Colors.mutedForeground,
+    color: colors.mutedForeground,
   },
   analyticsVal: {
     fontSize: Typography.fontSize.xs,
     fontWeight: "bold",
-    color: Colors.foreground,
+    color: colors.foreground,
   },
   progressBarBg: {
     height: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderRadius: 4,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   progressBarFill: {
     height: "100%",
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: 4,
   },
-});
+}); }
