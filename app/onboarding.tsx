@@ -9,6 +9,7 @@ import { AppColors } from "../constants/colors";
 import { Typography } from "../constants/typography";
 import { logoutUser } from "../lib/firebase";
 import { AlertCircle, Check, ChevronRight, CreditCard, LogOut, Phone, User } from "lucide-react-native";
+import EquarisWalletLogo from "../components/EquarisWalletLogo";
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
@@ -192,7 +193,10 @@ export default function OnboardingScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.headerSubtitle}>Equaris Mobile</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <EquarisWalletLogo size={28} />
+            <Text style={styles.headerSubtitle}>Equaris Mobile</Text>
+          </View>
           <Pressable style={styles.logoutButton} onPress={() => logoutUser()}>
             <LogOut size={14} color={colors.destructive} style={{ marginRight: 4 }} />
             <Text style={styles.logoutText}>Abort</Text>

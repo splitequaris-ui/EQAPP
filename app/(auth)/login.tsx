@@ -177,7 +177,10 @@ export default function LoginScreen() {
 
       <View style={styles.card}>
         <View style={styles.header}>
-          <Text style={styles.logoText}>Equaris</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6 }}>
+            <EquarisWalletLogo size={40} />
+            <Text style={styles.logoText}>Equaris</Text>
+          </View>
           <Text style={styles.title}>
             {mode === "signin" ? "Welcome back" : "Create your account"}
           </Text>
